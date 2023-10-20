@@ -102,6 +102,11 @@ class Lightning_Engine:
                     vis_i = frame.clone()
                     vis_i[alpha_images[idx]>0.5] *= 0.5
                     vis_i[alpha_images[idx]>0.5] += (images[idx, alpha_images[idx]>0.5] * 0.5)
+                    bbox = batch_emoca['bbox'][idx].clone()
+                    bbox[[0, 2]] *= vis_i.shape[-1]; bbox[[1, 3]] *= vis_i.shape[-2]
+                    vis_i = torchvision.utils.draw_bounding_boxes(
+                        vis_i.cpu().to(torch.uint8), bbox[None], width=3, colors='green'
+                    ).float()
                     # vis_image = torchvision.utils.make_grid([vis_i.cpu(), points_image[idx].cpu(), ], nrow=2)
                     vis_images.append(vis_i.cpu()/255.0)
                 visualization = torchvision.utils.make_grid(vis_images, nrow=4)
@@ -111,8 +116,9 @@ class Lightning_Engine:
         transform_matrix = torch.cat([rotation_6d_to_matrix(rotation), translation[:, :, None]], dim=-1)
         for idx, name in enumerate(track_frames):
             lightning_results[name] = {
+                'bbox': batch_emoca['bbox'][idx].detach().float().cpu(),
                 'emoca_shape': shape_code[idx].detach().float().cpu(),
-                'emoca_expression': batch_emoca['emoca_expression'][idx].detach().float().cpu(),
+                'emoca_expression': expression[idx].detach().float().cpu(),
                 'emoca_pose': batch_emoca['emoca_pose'][idx].detach().float().cpu(),
                 'transform_matrix': transform_matrix[idx].detach().float().cpu(),
             }

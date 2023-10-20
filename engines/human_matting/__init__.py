@@ -1,2 +1,2 @@
-# refer to https://github.com/Purkialo/HumanMatting.git
-from .engine import *
+from .modnet_engine import MODNetEngine
+from .stylematte_engine import StyleMatteEngine

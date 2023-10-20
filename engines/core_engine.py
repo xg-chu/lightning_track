@@ -10,11 +10,11 @@ from tqdm import tqdm
 
 from utils.lmdb_utils import LMDBEngine
 from engines.emoca import EMOCAEngine
-from engines.human_matting import HumanMattingEngine
 from engines.lightning_engine import Lightning_Engine
+from engines.human_matting import StyleMatteEngine as HumanMattingEngine
 
 class TrackEngine:
-    def __init__(self, focal_length=12.0, device='cuda'):
+    def __init__(self, focal_length=8.0, device='cuda'):
         random.seed(42)
         self._device = device
         # paths and data engine

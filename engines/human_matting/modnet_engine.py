@@ -8,7 +8,7 @@ import warnings
 import torchvision
 from .models.modnet import MODNet
 
-class HumanMattingEngine(torch.nn.Module):
+class MODNetEngine(torch.nn.Module):
     def __init__(self, device='cpu'):
         super().__init__()
         self._device = device

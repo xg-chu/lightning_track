@@ -47,8 +47,9 @@ class EMOCAEngine(nn.Module):
             height=size, width=size,
         )
         frame = torchvision.transforms.functional.resize(frame, size=224, antialias=True)
+        bbox = [center[0]-size/2, center[1]-size/2, center[0]+size/2, center[1]+size/2]
         # torchvision.utils.save_image(frame/255.0, './debug.jpg')
-        return frame
+        return frame, bbox
 
     def process_frame(self, frame):
         if not hasattr(self, 'emoca_model'):
@@ -64,7 +65,10 @@ class EMOCAEngine(nn.Module):
             lmks_dense[:, 0] = lmks_dense[:, 0] * lmk_image.shape[1]
             lmks_dense[:, 1] = lmks_dense[:, 1] * lmk_image.shape[0]
             lmks_dense = torch.tensor(lmks_dense)
-        croped_frame = self._crop_frame(frame, lmks_dense)
+        croped_frame, bbox = self._crop_frame(frame, lmks_dense)
+        bbox = torch.tensor(
+            [bbox[0]/frame.shape[2], bbox[1]/frame.shape[1], bbox[2]/frame.shape[2], bbox[3]/frame.shape[1]]
+        )
         # please input normed frame
         croped_frame = croped_frame.to(self.device)[None]/255.0
         emoca_result = self.emoca_model.encode(croped_frame)
@@ -73,6 +77,7 @@ class EMOCAEngine(nn.Module):
             'emoca_expression': emoca_result['exp'], 
             'emoca_pose': emoca_result['pose'],
             'lmks_dense': lmks_dense,
+            'bbox': bbox
         }
         for key in results.keys():
             if isinstance(results[key], torch.Tensor):

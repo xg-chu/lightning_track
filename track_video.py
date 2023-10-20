@@ -13,14 +13,14 @@ sys.path.append('./')
 from utils.lmdb_utils import LMDBEngine
 from engines.core_engine import TrackEngine
 
-def track_video(video_path):
+def track_video(video_path, dir_path=None):
     # build name
     data_name = os.path.basename(video_path).split('.')[0]
-    output_path = os.path.join('outputs', data_name)
+    output_path = os.path.join(f'outputs/{dir_path}', data_name) if dir_path else f'outputs/{data_name}'
     # build video data
-    tracker = TrackEngine(focal_length=12.0)
+    tracker = TrackEngine(focal_length=8.0)
     print('Processing video data...')
-    tracker.build_video(video_path, output_path, matting=True, background=1.0)
+    tracker.build_video(video_path, output_path, matting=True, background=0.0)
     lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=False)
     print('Done.')
     # track emoca
@@ -111,6 +111,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--video_path', '-v', required=True, type=str)
+    parser.add_argument('--split_id', '-s', default=0, type=int)
     args = parser.parse_args()
     if not os.path.isdir(args.video_path):
         track_video(args.video_path)
@@ -118,8 +119,9 @@ if __name__ == '__main__':
         all_videos = list_all_files(args.video_path)
         all_videos = [v for v in all_videos if v.endswith('.mp4')]
         all_videos = sorted(all_videos)
-        # all_videos = [v for i, v in enumerate(all_videos) if i % 4 == args.machine_id]
+        all_videos = [v for i, v in enumerate(all_videos) if i % 3 == args.split_id]
+        dir_path = os.path.basename(args.video_path[:-1]) if args.video_path.endswith('/') else os.path.basename(args.video_path)
         for vidx, video_path in enumerate(all_videos):
             print('Processing {}/{}......'.format(vidx+1, len(all_videos)))
             print(video_path)
-            track_video(video_path)
+            track_video(video_path, dir_path=dir_path)
