@@ -120,12 +120,12 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tracker = Tracker(focal_length=8.0, device='cuda')
     if not os.path.isdir(args.video_path):
-        tracker.track_video(args.video_path)
+        tracker.track_video(args.video_path, dir_path=args.outdir_path)
     else:
         all_videos = list_all_files(args.video_path)
         all_videos = [v for v in all_videos if v.endswith('.mp4')]
         all_videos = sorted(all_videos)
-        all_videos = [v for i, v in enumerate(all_videos) if i % 4 == args.split_id]
+        # all_videos = [v for i, v in enumerate(all_videos) if i % 2 == args.split_id]
         for vidx, video_path in enumerate(all_videos):
             if '002468' in video_path:
                 continue

@@ -88,6 +88,16 @@ class Lightning_Engine:
             all_loss.backward()
             optimizer.step()
             scheduler.step()
+        lightning_results = {}
+        transform_matrix = torch.cat([rotation_6d_to_matrix(rotation), translation[:, :, None]], dim=-1)
+        for idx, name in enumerate(track_frames):
+            lightning_results[name] = {
+                'bbox': batch_emoca['bbox'][idx].detach().float().cpu(),
+                'emoca_shape': shape_code[idx].detach().float().cpu(),
+                'emoca_expression': expression[idx].detach().float().cpu(),
+                'emoca_pose': batch_emoca['emoca_pose'][idx].detach().float().cpu(),
+                'transform_matrix': transform_matrix[idx].detach().float().cpu(),
+            }
         if batch_frames is not None:
             # point_render = Point_Renderer(image_size=self.image_size, device=self._device)
             with torch.no_grad():
@@ -95,10 +105,13 @@ class Lightning_Engine:
                     512, faces=self.flame_model.get_faces().cpu().numpy(), device=self._device
                 )
                 # points_image = point_render(vertices)
-                images, alpha_images = mesh_render(vertices, cameras)
+                images, alpha_images = mesh_render(
+                    vertices[:batch_frames.shape[0]], transform_matrix=transform_matrix[:batch_frames.shape[0]],
+                    focal_length=self.focal_length, principal_point=self.principal_point
+                )
                 vis_images = []
                 alpha_images = alpha_images.expand(-1, 3, -1, -1)
-                for idx, frame in enumerate(batch_frames[:20]):
+                for idx, frame in enumerate(batch_frames):
                     vis_i = frame.clone()
                     vis_i[alpha_images[idx]>0.5] *= 0.5
                     vis_i[alpha_images[idx]>0.5] += (images[idx, alpha_images[idx]>0.5] * 0.5)
@@ -112,16 +125,6 @@ class Lightning_Engine:
                 visualization = torchvision.utils.make_grid(vis_images, nrow=4)
         else:
             visualization = None
-        lightning_results = {}
-        transform_matrix = torch.cat([rotation_6d_to_matrix(rotation), translation[:, :, None]], dim=-1)
-        for idx, name in enumerate(track_frames):
-            lightning_results[name] = {
-                'bbox': batch_emoca['bbox'][idx].detach().float().cpu(),
-                'emoca_shape': shape_code[idx].detach().float().cpu(),
-                'emoca_expression': expression[idx].detach().float().cpu(),
-                'emoca_pose': batch_emoca['emoca_pose'][idx].detach().float().cpu(),
-                'transform_matrix': transform_matrix[idx].detach().float().cpu(),
-            }
         return lightning_results, visualization
 
     @staticmethod

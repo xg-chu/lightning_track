@@ -86,7 +86,8 @@ class TrackEngine:
 
     @staticmethod
     def build_minibatch(all_frames, batch_size=256):
-        random.shuffle(all_frames)
+        # random.shuffle(all_frames)
+        all_frames = sorted(all_frames, key=lambda x: int(x.split('_')[-1]))
         all_mini_batch, mini_batch = [], []
         for frame_name in all_frames:
             mini_batch.append(frame_name)
