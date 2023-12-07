@@ -35,18 +35,14 @@ class Lightning_Engine:
         }
         return cameras_kwargs
 
-    def lightning_optimize(self, track_frames, batch_emoca, shape_code, batch_frames=None, steps=500):
+    def lightning_optimize(self, track_frames, batch_emoca, batch_frames=None, steps=500):
         batch_size = len(track_frames)
         cameras_kwargs = self._build_cameras_kwargs(batch_size)
         # flame params
         base_rotation = batch_emoca['emoca_pose'][:, :3].clone().float()
         batch_emoca['emoca_pose'][:, :3] *= 0
-        if shape_code is None:
-            shape_code = batch_emoca['emoca_shape'].float()
-        else:
-            shape_code = shape_code[None].expand(batch_size, -1)
         vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
-            shape_params=shape_code, 
+            shape_params=batch_emoca['emoca_shape'].float(), 
             expression_params=batch_emoca['emoca_expression'].float(), 
             pose_params=batch_emoca['emoca_pose'].float()
         )
@@ -57,6 +53,7 @@ class Lightning_Engine:
         base_transform_p3d = self.transform_emoca_to_p3d(
             base_rotation, pred_lmk_dense, batch_emoca['lmks_dense'], self.image_size
         )
+        shape_code = batch_emoca['emoca_shape'].float()
         ori_rotation = matrix_to_rotation_6d(base_transform_p3d[:, :3, :3])
         rotation = torch.nn.Parameter(ori_rotation.clone())
         base_transform_p3d[:, :3, 3] = base_transform_p3d[:, :3, 3] * self.focal_length / 13.0 * self.verts_scale / 5.0

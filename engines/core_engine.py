@@ -80,7 +80,7 @@ class TrackEngine:
             mini_batch_emoca = torch.utils.data.default_collate(mini_batch_emoca)
             mini_batch_emoca = {k: v.to(self._device) for k, v in mini_batch_emoca.items()}
             lightning_result, visualization = self.lightning_engine.lightning_optimize(
-                mini_batch, mini_batch_emoca, None, batch_frames=batch_frames
+                mini_batch, mini_batch_emoca, batch_frames=batch_frames
             )
             batch_frames = None
             if visualization is not None:
