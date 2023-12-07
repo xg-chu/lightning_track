@@ -51,6 +51,11 @@ class TrackEngine:
                 lmdb_engine.dump(f'{video_name}_{fidx}', payload=frame, type='image')
             lmdb_engine.random_visualize(os.path.join(output_path, 'img_lmdb', 'visualize.jpg'))
             lmdb_engine.close()
+            return meta_data['fps'][0]
+        else:
+            video_reader = torchvision.io.VideoReader(src=video_path)
+            meta_data = video_reader.get_metadata()['video']
+            return meta_data['fps'][0]
 
     def track_emoca(self, image_tensor, ):
         # EMOCA
@@ -105,6 +110,7 @@ class TrackEngine:
             mini_batch_lightning = [lightning_result[key] for key in mini_batch]
             mini_batch_lightning = torch.utils.data.default_collate(mini_batch_lightning)
             mini_batch_lightning = {k: v.to(self._device) for k, v in mini_batch_lightning.items()}
+            mini_batch_lightning['lmks'] = torch.stack([torch.tensor(emoca_result[key]['lmks']) for key in mini_batch]).to(self._device).float()
             mini_batch_lightning['lmks_dense'] = torch.stack([torch.tensor(emoca_result[key]['lmks_dense']) for key in mini_batch]).to(self._device).float()
             mini_batch_lightning['frames'] = torch.stack([lmdb_engine[key] for key in mini_batch]).to(self._device).float()
             mini_batch_texture = {

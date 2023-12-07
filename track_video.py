@@ -18,13 +18,13 @@ class Tracker:
         self._device = device
         self.tracker = TrackEngine(focal_length=focal_length, device=device)
 
-    def track_video(self, video_path, dir_path=None, synthesis=False):
+    def track_video(self, video_path, dir_path=None, synthesis=False, no_vis=False):
         # build name
         data_name = os.path.basename(video_path).split('.')[0]
         output_path = os.path.join(f'outputs/{dir_path}', data_name) if dir_path else f'outputs/{data_name}'
         # build video data
         print('Processing video data...')
-        self.tracker.build_video(video_path, output_path, matting=True, background=0.0)
+        fps = self.tracker.build_video(video_path, output_path, matting=True, background=0.0)
         lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=False)
         print('Done.')
         # track emoca
@@ -35,10 +35,12 @@ class Tracker:
         if synthesis:
             synthesis_results = self.run_synthesis(emoca_results, lightning_results, lmdb_engine, output_path)
             synthesis_results = run_smoothing(synthesis_results, output_path)
-            self.run_visualization(synthesis_results, lmdb_engine, output_path)
+            if not no_vis:
+                self.run_visualization(synthesis_results, lmdb_engine, output_path, fps=fps)
         else:
             lightning_results = run_smoothing(lightning_results, output_path)
-            self.run_visualization(lightning_results, lmdb_engine, output_path)
+            if not no_vis:
+                self.run_visualization(lightning_results, lmdb_engine, output_path, fps=fps)
         lmdb_engine.close()
 
     def run_emoca(self, lmdb_engine, output_path,):
@@ -79,7 +81,7 @@ class Tracker:
         print('Done.')
         return synthesis_result
 
-    def run_visualization(self, data_result, lmdb_engine, output_path,):
+    def run_visualization(self, data_result, lmdb_engine, output_path, fps=25.0):
         import torchvision
         from engines.FLAME import FLAMEDense, FLAMETex
         from utils.renderer_utils import Mesh_Renderer, Texture_Renderer
@@ -87,7 +89,7 @@ class Tracker:
         self.focal_length = self.tracker.calibration_results['focal_length']
         self.principal_point = self.tracker.calibration_results['principal_point']
         self.flame_model = FLAMEDense(n_shape=100, n_exp=50).to(self._device)
-        print('Visualize lightning...')
+        print('Visualize results...')
         if 'tex_params' in data_result[list(data_result.keys())[0]]:
             texture_params = torch.tensor(
                 data_result[list(data_result.keys())[0]]['tex_params'], device=self._device
@@ -109,7 +111,7 @@ class Tracker:
             )
             vis_texture = False
         frames = list(data_result.keys())
-        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))
+        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:200]
         vis_images = []
         for frame in tqdm(frames):
             vertices, _, pred_lmk_dense = self.flame_model(
@@ -136,14 +138,15 @@ class Tracker:
                     focal_length=self.focal_length, principal_point=self.principal_point
                 )
                 alpha_images = alpha_images.expand(-1, 3, -1, -1)
-                vis_image = lmdb_engine[frame][None].to(self._device).float()
-                vis_image[alpha_images>0.5] *= 0.5
-                vis_image[alpha_images>0.5] += (images[alpha_images>0.5] * 0.5)
-                vis_image = torchvision.utils.make_grid([vis_image[0], images[0]], nrow=2, padding=0)[None]
+                vis_image_0 = lmdb_engine[frame][None].to(self._device).float()
+                vis_image_1 = vis_image_0.clone()
+                vis_image_1[alpha_images>0.5] *= 0.3
+                vis_image_1[alpha_images>0.5] += (images[alpha_images>0.5] * 0.7)
+                vis_image = torchvision.utils.make_grid([vis_image_0[0], vis_image_1[0], images[0]], nrow=3, padding=0)[None]
                 vis_images.append(vis_image.cpu())
         vis_images = torch.cat(vis_images, dim=0).to(torch.uint8).permute(0, 2, 3, 1)
         torchvision.io.write_video(
-            os.path.join(output_path, 'tracked.mp4'), vis_images, fps=25.0
+            os.path.join(output_path, 'tracked.mp4'), vis_images, fps=fps
         )
         print('Done.')
 
@@ -158,7 +161,6 @@ def run_smoothing(lightning_result, output_path):
             smoothed_data.append(smoothed_value)
         return smoothed_data
     def kalman_smooth_params(data, ):
-        print('running kalman...')
         from pykalman import KalmanFilter
         kf = KalmanFilter(initial_state_mean=data[0], n_dim_obs=data.shape[-1])
         smoothed_data = kf.em(data).smooth(data)[0]
@@ -172,18 +174,22 @@ def run_smoothing(lightning_result, output_path):
         transform_matrix = smoothed_results[frame_name]['transform_matrix']
         rotates.append(matrix_to_rotation_6d(torch.tensor(transform_matrix[:3, :3])).numpy())
         translates.append(transform_matrix[:3, 3])
-        pose.append(smoothed_results[frame_name]['emoca_pose'])
-        expression.append(smoothed_results[frame_name]['emoca_expression'])
-    pose = smooth_params(np.stack(pose), alpha=0.9)
-    expression = smooth_params(np.stack(expression), alpha=0.9)
-    # rotates = smooth_params(np.stack(rotates), alpha=0.8)
-    # translates = smooth_params(np.stack(translates), alpha=0.8)
-    rotates = kalman_smooth_params(np.stack(rotates))
-    translates = kalman_smooth_params(np.stack(translates))
-
+        # pose.append(smoothed_results[frame_name]['emoca_pose'])
+        # expression.append(smoothed_results[frame_name]['emoca_expression'])
+    # pose = smooth_params(np.stack(pose), alpha=0.95)
+    # expression = smooth_params(np.stack(expression), alpha=0.95)
+    if len(rotates) < 2000:
+        print('Running kalman smoothing...')
+        rotates = kalman_smooth_params(np.stack(rotates))
+        translates = kalman_smooth_params(np.stack(translates))
+    else:
+        rotates = smooth_params(np.stack(rotates), alpha=0.8)
+        translates = smooth_params(np.stack(translates), alpha=0.8)
+    # rotates = kalman_smooth_params(np.stack(rotates))
+    # translates = kalman_smooth_params(np.stack(translates))
     for fidx, frame_name in enumerate(frames):
-        smoothed_results[frame_name]['emoca_pose'] = pose[fidx]
-        smoothed_results[frame_name]['emoca_expression'] = expression[fidx]
+        # smoothed_results[frame_name]['emoca_pose'] = pose[fidx]
+        # smoothed_results[frame_name]['emoca_expression'] = expression[fidx]
         rotation = rotation_6d_to_matrix(torch.tensor(rotates[fidx])).numpy()
         affine_matrix = np.concatenate([rotation, translates[fidx][:, None]], axis=-1)
         smoothed_results[frame_name]['transform_matrix'] = affine_matrix
@@ -206,12 +212,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--video_path', '-v', required=True, type=str)
     parser.add_argument('--outdir_path', '-d', default='', type=str)
-    parser.add_argument('--split_id', '-s', default=0, type=int)
+    # parser.add_argument('--split_id', '-s', default=0, type=int)
     parser.add_argument('--synthesis', action='store_true')
+    parser.add_argument('--no_vis', action='store_true')
     args = parser.parse_args()
     tracker = Tracker(focal_length=8.0, device='cuda')
     if not os.path.isdir(args.video_path):
-        tracker.track_video(args.video_path, dir_path=args.outdir_path, synthesis=args.synthesis)
+        tracker.track_video(args.video_path, dir_path=args.outdir_path, synthesis=args.synthesis, no_vis=args.no_vis)
     else:
         all_videos = list_all_files(args.video_path)
         all_videos = [v for v in all_videos if v.endswith('.mp4')]
@@ -220,4 +227,4 @@ if __name__ == '__main__':
         for vidx, video_path in enumerate(all_videos):
             print('Processing {}/{}......'.format(vidx+1, len(all_videos)))
             print(video_path)
-            tracker.track_video(video_path, dir_path=args.outdir_path, synthesis=args.synthesis)
+            tracker.track_video(video_path, dir_path=args.outdir_path, synthesis=args.synthesis, no_vis=args.no_vis)

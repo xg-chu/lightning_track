@@ -44,12 +44,12 @@ class Synthesis_Engine:
         rotation, translation = transform_matrix[:, :3, :3], transform_matrix[..., :3, 3]
         # flame params
         batch_data['emoca_pose'][..., :3] *= 0
-        flame_verts, _, _ = self.flame_model(
+        vertices, _, _ = self.flame_model(
             shape_params=batch_data['emoca_shape'], 
             expression_params=batch_data['emoca_expression'],
             pose_params=batch_data['emoca_pose']
         )
-        flame_verts = flame_verts * self.verts_scale
+        vertices = vertices * self.verts_scale
         # optimize
         sh_params = torch.nn.Parameter(torch.zeros(batch_size, 9, 3).float().to(self._device))
         texture_params = torch.nn.Parameter(torch.zeros(batch_size, 50).to(self._device))
@@ -69,7 +69,7 @@ class Synthesis_Engine:
             for k in tqdm_queue:
                 albedos = self.flame_texture(texture_params, image_size=this_image_size)
                 lights = sh_params.expand(batch_size, -1, -1)
-                pred_images, masks_all, masks_face = self.mesh_render(flame_verts, albedos, cameras=cameras, lights=lights, image_size=this_image_size)
+                pred_images, masks_all, masks_face = self.mesh_render(vertices, albedos, cameras=cameras, lights=lights, image_size=this_image_size)
                 # torchvision.utils.save_image([pred_images[0], gt_images[0]], './debug.jpg', nrow=1)
                 # loss_head = pixel_loss(pred_images, gt_images, mask=masks_all) * 350
                 loss_face = pixel_loss(pred_images, gt_images, mask=masks_face) * 350
@@ -113,19 +113,24 @@ class Synthesis_Engine:
             albedos = self.flame_texture(tex_params, image_size=this_image_size)
             gt_images = torchvision.transforms.functional.resize(batch_data['frames'], this_image_size, antialias=True) 
             gt_images = torchvision.transforms.functional.gaussian_blur(gt_images, [7, 7], sigma=[9.0, 9.0])
-            gt_dense = batch_data['lmks_dense'][:, self.flame_model.mediapipe_idx] / 512.0 * this_image_size
+            gt_lmks_68 = batch_data['lmks'] / 512.0 * this_image_size
+            gt_lmks_dense = batch_data['lmks_dense'][:, self.flame_model.mediapipe_idx] / 512.0 * this_image_size
             for idx in range(this_steps):
                 # build flame params
                 # flame params
-                flame_verts, _, pred_lmk_dense = self.flame_model(
+                vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
                     shape_params=batch_data['emoca_shape'], 
                     expression_params=expression_codes,
                     pose_params=batch_data['emoca_pose']
                 )
-                flame_verts, pred_lmk_dense = flame_verts * self.verts_scale, pred_lmk_dense * self.verts_scale
+                vertices = vertices*self.verts_scale
+                pred_lmk_68, pred_lmk_dense = pred_lmk_68*self.verts_scale, pred_lmk_dense*self.verts_scale
                 cameras = PerspectiveCameras(
                     R=rotation_6d_to_matrix(rotation), T=translation, **cameras_kwargs
                 )
+                pred_lmk_68 = cameras.transform_points_screen(
+                    pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
+                )[..., :2]
                 pred_lmk_dense = cameras.transform_points_screen(
                     pred_lmk_dense, R=rotation_6d_to_matrix(rotation), T=translation
                 )[..., :2]
@@ -133,14 +138,18 @@ class Synthesis_Engine:
                 # vis_i = torchvision.utils.draw_keypoints(vis_i.to(torch.uint8), pred_lmk_dense[0:1, EYE_LMKS_1], colors="blue", radius=1.5)
                 # torchvision.utils.save_image(vis_i.float(), './debug.jpg')
                 # import ipdb; ipdb.set_trace()
-                pred_images, mask_all, mask_face = self.mesh_render(flame_verts, albedos, cameras=cameras, lights=sh_params, image_size=this_image_size)
+                pred_images, mask_all, mask_face = self.mesh_render(vertices, albedos, cameras=cameras, lights=sh_params, image_size=this_image_size)
                 loss_face = pixel_loss(pred_images, gt_images, mask=mask_face) * 350 
                 loss_head = pixel_loss(pred_images, gt_images, mask=mask_all) * 350 
-                loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_dense, this_image_size) * 100
-                loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_dense, this_image_size) * 10000
-                loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_dense, this_image_size) * 1000
-                all_loss = (loss_face + loss_head*0.5) + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure
-                # print(loss_face.item(), loss_head.item(), loss_lmk_dense.item(), loss_lmk_mouth.item(), loss_lmk_eye_closure.item())
+                loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 1000
+                loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 2000
+                loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 7000
+                loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 10000
+                loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 1000
+                loss_exp_norm = torch.sum(expression_codes ** 2) * 0.02
+                all_loss = (loss_face + loss_head) + \
+                           loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + \
+                           loss_exp_norm
                 optimizer.zero_grad()
                 all_loss.backward()
                 optimizer.step()
@@ -180,6 +189,16 @@ class Synthesis_Engine:
 def lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
     size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
     diff = torch.pow(opt_lmks - target_lmks, 2)
+    if lmk_mask is None:
+        return (diff * size).mean()
+    else:
+        return (diff * size * lmk_mask).mean()
+
+
+def oval_lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
+    size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
+    oval_ids = [i for i in range(17)]
+    diff = torch.pow(opt_lmks[:, oval_ids, :] - target_lmks[:, oval_ids, :], 2)
     if lmk_mask is None:
         return (diff * size).mean()
     else:

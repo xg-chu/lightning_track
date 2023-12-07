@@ -60,7 +60,7 @@ class Lightning_Engine:
         rotation = torch.nn.Parameter(matrix_to_rotation_6d(base_transform_p3d[:, :3, :3]))
         base_transform_p3d[:, :3, 3] = base_transform_p3d[:, :3, 3] * self.focal_length / 13.0 * self.verts_scale / 5.0
         translation = torch.nn.Parameter(base_transform_p3d[:, :, 3])
-        expression = torch.nn.Parameter(batch_emoca['emoca_expression'].float())
+        expression = torch.nn.Parameter(batch_emoca['emoca_expression'].float(), requires_grad=False)
         params = [
             {'params': [translation], 'lr': 0.005}, {'params': [rotation], 'lr': 0.005},
             {'params': [expression], 'lr': 0.025}
@@ -69,21 +69,29 @@ class Lightning_Engine:
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.1)
         # run
         for idx in range(steps):
-            vertices, _, pred_lmk_dense = self.flame_model(
+            gt_lmks_68 = batch_emoca['lmks']
+            gt_lmks_dense = batch_emoca['lmks_dense'][:, self.flame_model.mediapipe_idx]
+            vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
                 shape_params=shape_code, 
                 expression_params=expression, 
                 pose_params=batch_emoca['emoca_pose'].float()
             )
-            vertices, pred_lmk_dense = vertices*self.verts_scale, pred_lmk_dense*self.verts_scale
-            points_dense = cameras.transform_points_screen(
+            vertices = vertices*self.verts_scale
+            pred_lmk_68, pred_lmk_dense = pred_lmk_68*self.verts_scale, pred_lmk_dense*self.verts_scale
+            pred_lmk_dense = cameras.transform_points_screen(
                 pred_lmk_dense, R=rotation_6d_to_matrix(rotation), T=translation
             )[..., :2]
-            gt_lmks_dense = batch_emoca['lmks_dense'][:, self.flame_model.mediapipe_idx]
-            loss_lmk_dense = lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 1000
-            loss_lmk_eye_closure = eye_closure_lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 1000
-            loss_lmk_mouth = mouth_lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 15000
-            all_loss = loss_lmk_dense + loss_lmk_eye_closure + loss_lmk_mouth
-            # print(loss_lmk_dense.item(), loss_lmk_eye_closure.item(), loss_lmk_mouth.item())
+            pred_lmk_68 = cameras.transform_points_screen(
+                pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
+            )[..., :2]
+            loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, self.image_size) * 1000
+            loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, self.image_size) * 2000
+            loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 7000
+            loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 10000
+            loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 1000
+            loss_exp_norm = torch.sum(expression ** 2) * 0.02
+            all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm
+            # print(loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item(), loss_exp_norm.item())
             optimizer.zero_grad()
             all_loss.backward()
             optimizer.step()
@@ -159,6 +167,16 @@ class Lightning_Engine:
 def lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
     size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
     diff = torch.pow(opt_lmks - target_lmks, 2)
+    if lmk_mask is None:
+        return (diff * size).mean()
+    else:
+        return (diff * size * lmk_mask).mean()
+
+
+def oval_lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
+    size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
+    oval_ids = [i for i in range(17)]
+    diff = torch.pow(opt_lmks[:, oval_ids, :] - target_lmks[:, oval_ids, :], 2)
     if lmk_mask is None:
         return (diff * size).mean()
     else:
