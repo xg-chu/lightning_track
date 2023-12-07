@@ -47,7 +47,7 @@ class Tracker:
         print('Track with emoca/mica/insightface/mediapipe/...')
         if not os.path.exists(os.path.join(output_path, 'base.pkl')):
             base_results = {}
-            for key in tqdm(lmdb_engine.keys()):
+            for key in tqdm(lmdb_engine.keys(), ncols=120, colour='#95bb72'):
                 base_results[key] = self.tracker.track_base(lmdb_engine[key])
             with open(os.path.join(output_path, 'base.pkl'), 'wb') as f:
                 pickle.dump(base_results, f)
@@ -113,7 +113,7 @@ class Tracker:
         frames = list(data_result.keys())
         frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:200]
         vis_images = []
-        for frame in tqdm(frames):
+        for frame in tqdm(frames, ncols=120, colour='#95bb72'):
             vertices, _, pred_lmk_dense = self.flame_model(
                 shape_params=torch.tensor(data_result[frame]['mica_shape'], device=self._device)[None],
                 expression_params=torch.tensor(data_result[frame]['emoca_expression'], device=self._device)[None],

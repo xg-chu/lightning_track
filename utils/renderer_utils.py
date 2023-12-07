@@ -68,6 +68,7 @@ class Mesh_Renderer(nn.Module):
         render_results = renderer(mesh).permute(0, 3, 1, 2)
         images = render_results[:, :3]
         alpha_images = render_results[:, 3:]
+        images[alpha_images.expand(-1, 3, -1, -1)<0.5] = 0.0
         return images*255, alpha_images
 
 
@@ -101,7 +102,7 @@ class Point_Renderer(nn.Module):
             )
         rgb = torch.Tensor(torch.rand_like(verts)).to(self.device)
         point_cloud = Pointclouds(points=verts, features=rgb)
-        images = self.renderer(point_cloud, cameras=self.cameras).permute(0, 3, 1, 2)
+        images = self.renderer(point_cloud, cameras=self.cameras,).permute(0, 3, 1, 2)
         return images*255
 
 
