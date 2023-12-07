@@ -152,7 +152,6 @@ class Tracker:
 
 
 def run_smoothing(lightning_result, output_path):
-    print('Run smoothing...')
     from pytorch3d.transforms import matrix_to_rotation_6d, rotation_6d_to_matrix
     def smooth_params(data, alpha=0.5):
         smoothed_data = [data[0]]  # Initialize the smoothed data with the first value of the input data
@@ -183,6 +182,7 @@ def run_smoothing(lightning_result, output_path):
         rotates = kalman_smooth_params(np.stack(rotates))
         translates = kalman_smooth_params(np.stack(translates))
     else:
+        print('Run smoothing...')
         rotates = smooth_params(np.stack(rotates), alpha=0.8)
         translates = smooth_params(np.stack(translates), alpha=0.8)
     # rotates = kalman_smooth_params(np.stack(rotates))

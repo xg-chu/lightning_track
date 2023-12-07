@@ -198,7 +198,7 @@ class Texture_Renderer(nn.Module):
         masks_all = image_ref[..., 3:].permute(0, 3, 1, 2) > 0.0
         if lights is not None:
             images = self.add_SHlight(images, lights)
-            images[~masks_all.expand(-1, 3, -1, -1)] = 1.0
+            images[~masks_all.expand(-1, 3, -1, -1)] = 0.0
         # silhouette renderer
         with torch.no_grad():
             if hasattr(self, 'flame_mask'):

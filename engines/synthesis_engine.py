@@ -96,7 +96,8 @@ class Synthesis_Engine:
         tex_params = torch.nn.Parameter(texture_code['tex_params'], requires_grad=False)
         sh_params = torch.nn.Parameter(texture_code['sh_params'])
         translation = torch.nn.Parameter(translation)
-        rotation = torch.nn.Parameter(matrix_to_rotation_6d(rotation))
+        ori_rotation = matrix_to_rotation_6d(rotation)
+        rotation = torch.nn.Parameter(ori_rotation.clone())
         expression_codes = torch.nn.Parameter(batch_data['emoca_expression'])
         params = [
             {'params': [sh_params], 'lr': 0.001, 'name': ['sh']},
@@ -128,9 +129,9 @@ class Synthesis_Engine:
                 cameras = PerspectiveCameras(
                     R=rotation_6d_to_matrix(rotation), T=translation, **cameras_kwargs
                 )
-                pred_lmk_68 = cameras.transform_points_screen(
-                    pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
-                )[..., :2]
+                # pred_lmk_68 = cameras.transform_points_screen(
+                #     pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
+                # )[..., :2]
                 pred_lmk_dense = cameras.transform_points_screen(
                     pred_lmk_dense, R=rotation_6d_to_matrix(rotation), T=translation
                 )[..., :2]
@@ -141,31 +142,29 @@ class Synthesis_Engine:
                 pred_images, mask_all, mask_face = self.mesh_render(vertices, albedos, cameras=cameras, lights=sh_params, image_size=this_image_size)
                 loss_face = pixel_loss(pred_images, gt_images, mask=mask_face) * 350 
                 loss_head = pixel_loss(pred_images, gt_images, mask=mask_all) * 350 
-                loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 1000
-                loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 2000
-                loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 7000
-                loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 10000
+                # loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 1000
+                # loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 2000
+                loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 5000
+                loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 6000
                 loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 1000
                 loss_exp_norm = torch.sum(expression_codes ** 2) * 0.02
-                all_loss = (loss_face + loss_head) + \
-                           loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + \
-                           loss_exp_norm
+                all_loss = (loss_face + loss_head) + loss_exp_norm + \
+                           loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure 
                 optimizer.zero_grad()
                 all_loss.backward()
                 optimizer.step()
                 scheduler.step()
         if visualize:
-            with torch.no_grad():
-                vis_images_0 = gt_images[:12].clone()
-                vis_images_1 = gt_images[:12].clone()
-                pred_images = pred_images[:12]
-                vis_masks = mask_face[:12].expand(-1, 3, -1, -1)
-                vis_images_1[vis_masks] = pred_images[vis_masks]
-                vis_images = torch.cat(
-                    [vis_images_0[:, None], vis_images_1[:, None]], dim=1
-                ).reshape(-1, 3, this_image_size, this_image_size)
-                visualization = torchvision.utils.make_grid(vis_images, nrow=4)
-                torchvision.utils.save_image(visualization, 'debug.jpg')
+            vis_images_0 = gt_images[:12].clone()
+            vis_images_1 = gt_images[:12].clone()
+            pred_images = pred_images[:12].detach()
+            vis_masks = mask_face[:12].expand(-1, 3, -1, -1).detach()
+            vis_images_1[vis_masks] = pred_images[vis_masks]
+            vis_images = torch.cat(
+                [vis_images_0[:, None], vis_images_1[:, None]], dim=1
+            ).reshape(-1, 3, this_image_size, this_image_size)
+            visualization = torchvision.utils.make_grid(vis_images, nrow=4)
+                # torchvision.utils.save_image(visualization, 'debug.jpg')
         else:
             visualization = None
         # gather results

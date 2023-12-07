@@ -57,7 +57,8 @@ class Lightning_Engine:
         base_transform_p3d = self.transform_emoca_to_p3d(
             base_rotation, pred_lmk_dense, batch_emoca['lmks_dense'], self.image_size
         )
-        rotation = torch.nn.Parameter(matrix_to_rotation_6d(base_transform_p3d[:, :3, :3]))
+        ori_rotation = matrix_to_rotation_6d(base_transform_p3d[:, :3, :3])
+        rotation = torch.nn.Parameter(ori_rotation.clone())
         base_transform_p3d[:, :3, 3] = base_transform_p3d[:, :3, 3] * self.focal_length / 13.0 * self.verts_scale / 5.0
         translation = torch.nn.Parameter(base_transform_p3d[:, :, 3])
         expression = torch.nn.Parameter(batch_emoca['emoca_expression'].float(), requires_grad=False)
@@ -90,8 +91,9 @@ class Lightning_Engine:
             loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 10000
             loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 1000
             loss_exp_norm = torch.sum(expression ** 2) * 0.02
-            all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm
-            # print(loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item(), loss_exp_norm.item())
+            loss_rotation_norm = torch.sum((rotation - ori_rotation) ** 2) * 500.0
+            all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm + loss_rotation_norm
+            # print(loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item(), loss_rotation_norm.item())
             optimizer.zero_grad()
             all_loss.backward()
             optimizer.step()
