@@ -62,8 +62,8 @@ class Lightning_Engine:
         translation = torch.nn.Parameter(base_transform_p3d[:, :, 3])
         expression = torch.nn.Parameter(batch_emoca['emoca_expression'].float())
         params = [
-            {'params': [translation], 'lr': 0.01}, {'params': [rotation], 'lr': 0.005},
-            {'params': [expression], 'lr': 0.002}
+            {'params': [translation], 'lr': 0.005}, {'params': [rotation], 'lr': 0.005},
+            {'params': [expression], 'lr': 0.025}
         ]
         optimizer = torch.optim.Adam(params)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.1)
@@ -78,12 +78,12 @@ class Lightning_Engine:
             points_dense = cameras.transform_points_screen(
                 pred_lmk_dense, R=rotation_6d_to_matrix(rotation), T=translation
             )[..., :2]
-
-            loss_key_lmk = lmk_loss(
-                points_dense, batch_emoca['lmks_dense'][:, self.flame_model.mediapipe_idx], self.image_size
-            ) * 10
-            all_loss = loss_key_lmk
-            # print(all_loss)
+            gt_lmks_dense = batch_emoca['lmks_dense'][:, self.flame_model.mediapipe_idx]
+            loss_lmk_dense = lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 1000
+            loss_lmk_eye_closure = eye_closure_lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 1000
+            loss_lmk_mouth = mouth_lmk_loss(points_dense, gt_lmks_dense, self.image_size) * 15000
+            all_loss = loss_lmk_dense + loss_lmk_eye_closure + loss_lmk_mouth
+            # print(loss_lmk_dense.item(), loss_lmk_eye_closure.item(), loss_lmk_mouth.item())
             optimizer.zero_grad()
             all_loss.backward()
             optimizer.step()
@@ -159,6 +159,34 @@ class Lightning_Engine:
 def lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
     size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
     diff = torch.pow(opt_lmks - target_lmks, 2)
+    if lmk_mask is None:
+        return (diff * size).mean()
+    else:
+        return (diff * size * lmk_mask).mean()
+
+
+def eye_closure_lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
+    size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
+    UPPER_EYE_LMKS = [29, 30, 31, 45, 46, 47,]
+    LOWER_EYE_LMKS = [23, 24, 25, 39, 40, 41,]
+    diff_opt = opt_lmks[:, UPPER_EYE_LMKS, :] - opt_lmks[:, LOWER_EYE_LMKS, :]
+    diff_target = target_lmks[:, UPPER_EYE_LMKS, :] - target_lmks[:, LOWER_EYE_LMKS, :]
+    diff = torch.pow(diff_opt - diff_target, 2)
+    if lmk_mask is None:
+        return (diff * size).mean()
+    else:
+        return (diff * size * lmk_mask).mean()
+
+
+def mouth_lmk_loss(opt_lmks, target_lmks, image_size, lmk_mask=None):
+    size = torch.tensor([1 / image_size, 1 / image_size], device=opt_lmks.device).float()[None, None, ...]
+    MOUTH_IDS = [
+        65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 
+        75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 
+        85, 86, 87, 88, 89, 91, 92, 93, 94, 95, 
+        96, 97, 98, 99, 100, 101, 102, 103, 104
+    ]
+    diff = torch.pow(opt_lmks[:, MOUTH_IDS, :] - target_lmks[:, MOUTH_IDS, :], 2)
     if lmk_mask is None:
         return (diff * size).mean()
     else:

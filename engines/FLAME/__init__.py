@@ -1,1 +1,1 @@
-from .FLAME import FLAME, FLAMEDense
+from .FLAME import FLAME, FLAMEDense, FLAMETex

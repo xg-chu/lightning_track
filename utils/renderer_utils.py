@@ -3,6 +3,7 @@
 
 import os
 import torch
+import numpy as np
 import torch.nn as nn
 from pytorch3d.io import load_obj
 from pytorch3d.structures import (
@@ -105,21 +106,17 @@ class Point_Renderer(nn.Module):
 
 
 class Texture_Renderer(nn.Module):
-    def __init__(self, image_size, flame_path, flame_mask=None, device='cpu'):
+    def __init__(self, obj_path, flame_mask=None, device='cpu'):
         super(Texture_Renderer, self).__init__()
         self.device = device
         # objects
-        obj_filename = os.path.join(flame_path, 'FLAME_embedding', 'head_template_mesh.obj')
-        _, faces, aux = load_obj(obj_filename, load_textures=False)
+        # obj_filename = os.path.join(flame_path, 'FLAME_embedding', 'head_template_mesh.obj')
+        _, faces, aux = load_obj(obj_path, load_textures=False)
         self.uvverts = aux.verts_uvs[None, ...].to(self.device)  # (N, V, 2)
         self.uvfaces = faces.textures_idx[None, ...].to(self.device)  # (N, F, 3)
         self.faces = faces.verts_idx[None, ...].to(self.device) # (N, F, 3)
         # setting
         self.lights = AmbientLights(device=self.device)
-        self.raster_settings = RasterizationSettings(
-            image_size=image_size, blur_radius=0.0, faces_per_pixel=1, 
-            perspective_correct=True, cull_backfaces=True
-        )
         # flame mask
         if flame_mask is not None:
             reduced_faces = []
@@ -131,8 +128,54 @@ class Texture_Renderer(nn.Module):
                 reduced_faces.append(True if valid == 3 else False)
             reduced_faces = torch.tensor(reduced_faces).to(self.device)
             self.flame_mask = reduced_faces
+        ## lighting
+        pi = np.pi
+        sh_const = torch.tensor(
+            [
+                1 / np.sqrt(4 * pi),
+                ((2 * pi) / 3) * (np.sqrt(3 / (4 * pi))),
+                ((2 * pi) / 3) * (np.sqrt(3 / (4 * pi))),
+                ((2 * pi) / 3) * (np.sqrt(3 / (4 * pi))),
+                (pi / 4) * (3) * (np.sqrt(5 / (12 * pi))),
+                (pi / 4) * (3) * (np.sqrt(5 / (12 * pi))),
+                (pi / 4) * (3) * (np.sqrt(5 / (12 * pi))),
+                (pi / 4) * (3 / 2) * (np.sqrt(5 / (12 * pi))),
+                (pi / 4) * (1 / 2) * (np.sqrt(5 / (4 * pi))),
+            ],
+            dtype=torch.float32,
+        )
+        self.constant_factor = sh_const.to(self.device)
 
-    def forward(self, vertices_world, texture_images, cameras):
+    def add_SHlight(self, normal_images, sh_coeff):
+        # sh_coeff: [bz, 9, 3]
+        N = normal_images
+        sh = torch.stack([
+            N[:, 0] * 0. + 1., N[:, 0], N[:, 1],
+            N[:, 2], N[:, 0] * N[:, 1], N[:, 0] * N[:, 2],
+            N[:, 1] * N[:, 2], N[:, 0] ** 2 - N[:, 1] ** 2, 3 * (N[:, 2] ** 2) - 1
+        ], 1)  # [bz, 9, h, w]
+        sh = sh * self.constant_factor[None, :, None, None]
+        shading = torch.sum(sh_coeff[:, :, :, None, None] * sh[:, :, None, :, :], 1)  # [bz, 9, 3, h, w]
+        return shading
+
+    def _build_cameras(self, transform_matrix, focal_length, principal_point, image_size):
+        batch_size = transform_matrix.shape[0]
+        screen_size = torch.tensor(
+            [image_size, image_size], device=self.device
+        ).float()[None].repeat(batch_size, 1)
+        cameras_kwargs = {
+            'principal_point': principal_point.repeat(batch_size, 1), 'focal_length': focal_length, 
+            'image_size': screen_size, 'device': self.device,
+        }
+        cameras = PerspectiveCameras(**cameras_kwargs, R=transform_matrix[:, :3, :3], T=transform_matrix[:, :3, 3])
+        return cameras
+
+    def forward(
+            self, vertices_world, texture_images, lights=None, image_size=512, 
+            cameras=None, transform_matrix=None, focal_length=None, principal_point=None
+        ):
+        if cameras is None:
+            cameras = self._build_cameras(transform_matrix, focal_length, principal_point, image_size)
         batch_size = vertices_world.shape[0]
         faces = self.faces.expand(batch_size, -1, -1)
         textures_uv = TexturesUV(
@@ -142,13 +185,20 @@ class Texture_Renderer(nn.Module):
         )
         meshes_world = Meshes(verts=vertices_world, faces=faces, textures=textures_uv)
         # phong renderer
+        raster_settings = RasterizationSettings(
+            image_size=image_size, blur_radius=0.0, faces_per_pixel=1, 
+            perspective_correct=True, cull_backfaces=True
+        )
         phong_renderer = MeshRenderer(
-            rasterizer=MeshRasterizer(cameras=cameras, raster_settings=self.raster_settings),
+            rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
             shader=SoftPhongShader(device=self.device, cameras=cameras, lights=self.lights)
         )
         image_ref = phong_renderer(meshes_world=meshes_world)
         images = image_ref[..., :3].permute(0, 3, 1, 2)
         masks_all = image_ref[..., 3:].permute(0, 3, 1, 2) > 0.0
+        if lights is not None:
+            images = self.add_SHlight(images, lights)
+            images[~masks_all.expand(-1, 3, -1, -1)] = 1.0
         # silhouette renderer
         with torch.no_grad():
             if hasattr(self, 'flame_mask'):
@@ -157,7 +207,7 @@ class Texture_Renderer(nn.Module):
                     verts=vertices_world, faces=faces[:, self.flame_mask], textures=textures_verts
                 )
                 silhouette_renderer = MeshRenderer(
-                    rasterizer=MeshRasterizer(cameras=cameras, raster_settings=self.raster_settings),
+                    rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),
                     shader=SoftSilhouetteShader()
                 )
                 masks_face = silhouette_renderer(meshes_world=meshes_masked)

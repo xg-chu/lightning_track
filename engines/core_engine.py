@@ -11,6 +11,7 @@ from tqdm import tqdm
 from utils.lmdb_utils import LMDBEngine
 from engines.emoca import EMOCAEngine
 from engines.lightning_engine import Lightning_Engine
+from engines.synthesis_engine import Synthesis_Engine
 from engines.human_matting import StyleMatteEngine as HumanMattingEngine
 
 class TrackEngine:
@@ -21,11 +22,12 @@ class TrackEngine:
         self.matting_engine = HumanMattingEngine(device=device)
         self.emoca_engine = EMOCAEngine(device=device, lazy_init=True)
         self.lightning_engine = Lightning_Engine(device=device, lazy_init=True)
+        self.synthesis_engine = Synthesis_Engine(device=device, lazy_init=True)
         calibration_results = {
             'focal_length':torch.tensor([focal_length]), 
             'principal_point': torch.tensor([0., 0.]), 'verts_scale': 5.0
         }
-        self.lightning_engine.init_model(calibration_results, image_size=512)
+        self.calibration_results = calibration_results
 
     def build_video(self, video_path, output_path, matting=True, background=0.0):
         video_name = os.path.basename(video_path).split('.')[0]
@@ -60,6 +62,7 @@ class TrackEngine:
         return emoca_result
 
     def track_lightning(self, emoca_result, lmdb_engine=None, vis_path=None):
+        self.lightning_engine.init_model(self.calibration_results, image_size=512)
         emoca_result = {k: v for k, v in emoca_result.items() if v is not None}
         mini_batchs = self.build_minibatch(list(emoca_result.keys()))
         if lmdb_engine is not None:
@@ -83,6 +86,42 @@ class TrackEngine:
                 if isinstance(lightning_results[fkey][key], torch.Tensor):
                     lightning_results[fkey][key] = lightning_results[fkey][key].float().cpu().numpy()
         return lightning_results
+
+    def track_synthesis(self, emoca_result, lightning_result, lmdb_engine, vis_path=None):
+        self.synthesis_engine.init_model(self.calibration_results)
+        lightning_result = {k: v for k, v in lightning_result.items() if v is not None}
+        # texture
+        tex_frames = random.sample(list(lmdb_engine.keys()), 16)
+        tex_batch = [lightning_result[key] for key in tex_frames]
+        tex_batch = torch.utils.data.default_collate(tex_batch)
+        tex_batch = {k: v.to(self._device) for k, v in tex_batch.items()}
+        tex_batch['frames'] = torch.stack([lmdb_engine[k] for k in tex_frames]).to(self._device).float()
+        texture_result, visualization = self.synthesis_engine.texture_optimize(tex_batch)
+        torchvision.utils.save_image(visualization, os.path.join(vis_path, 'texture.jpg'))
+        # tracking
+        mini_batchs = self.build_minibatch(list(lightning_result.keys()), batch_size=32)
+        synthesis_results = {}
+        for bidx, mini_batch in enumerate(tqdm(mini_batchs)):
+            mini_batch_lightning = [lightning_result[key] for key in mini_batch]
+            mini_batch_lightning = torch.utils.data.default_collate(mini_batch_lightning)
+            mini_batch_lightning = {k: v.to(self._device) for k, v in mini_batch_lightning.items()}
+            mini_batch_lightning['lmks_dense'] = torch.stack([torch.tensor(emoca_result[key]['lmks_dense']) for key in mini_batch]).to(self._device).float()
+            mini_batch_lightning['frames'] = torch.stack([lmdb_engine[key] for key in mini_batch]).to(self._device).float()
+            mini_batch_texture = {
+                'tex_params': texture_result['tex_params'].mean(dim=0, keepdim=True).expand(len(mini_batch), -1).to(self._device).float(),
+                'sh_params': texture_result['sh_params'].mean(dim=0, keepdim=True).expand(len(mini_batch), -1, -1).to(self._device).float(),
+            }
+            synthesis_result, visualization = self.synthesis_engine.synthesis_optimize(
+                mini_batch, mini_batch_lightning, mini_batch_texture, visualize=bidx==0
+            )
+            if visualization is not None:
+                torchvision.utils.save_image(visualization, os.path.join(vis_path, 'synthesis.jpg'))
+            synthesis_results.update(synthesis_result)
+        for fkey in synthesis_results:
+            for key in list(synthesis_results[fkey].keys()):
+                if isinstance(synthesis_results[fkey][key], torch.Tensor):
+                    synthesis_results[fkey][key] = synthesis_results[fkey][key].float().cpu().numpy()
+        return synthesis_results
 
     @staticmethod
     def build_minibatch(all_frames, batch_size=256):
