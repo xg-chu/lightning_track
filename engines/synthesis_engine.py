@@ -36,7 +36,7 @@ class Synthesis_Engine:
         return cameras_kwargs
 
     def texture_optimize(self, batch_data, steps=[100, 70, 30]):
-        # ['frames', 'bbox', 'emoca_shape', 'emoca_expression', 'emoca_pose', 'transform_matrix']
+        # ['frames', 'bbox', 'mica_shape', 'emoca_expression', 'emoca_pose', 'transform_matrix']
         batch_size = len(batch_data['frames'])
         batch_data['frames'] = batch_data['frames'] / 255.0
         # build camera
@@ -45,7 +45,7 @@ class Synthesis_Engine:
         # flame params
         batch_data['emoca_pose'][..., :3] *= 0
         vertices, _, _ = self.flame_model(
-            shape_params=batch_data['emoca_shape'], 
+            shape_params=batch_data['mica_shape'], 
             expression_params=batch_data['emoca_expression'],
             pose_params=batch_data['emoca_pose']
         )
@@ -85,7 +85,7 @@ class Synthesis_Engine:
         
 
     def synthesis_optimize(self, track_frames, batch_data, texture_code, steps=[50, 30, 20], visualize=False):
-        # ['frames', 'bbox', 'emoca_shape', 'emoca_expression', 'emoca_pose', 'transform_matrix', 'lmks_dense']
+        # ['frames', 'bbox', 'mica_shape', 'emoca_expression', 'emoca_pose', 'transform_matrix', 'lmks_dense']
         batch_size = len(track_frames)
         batch_data['emoca_pose'][..., :3] *= 0
         batch_data['frames'] = batch_data['frames'] / 255.0
@@ -120,7 +120,7 @@ class Synthesis_Engine:
                 # build flame params
                 # flame params
                 vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
-                    shape_params=batch_data['emoca_shape'], 
+                    shape_params=batch_data['mica_shape'], 
                     expression_params=expression_codes,
                     pose_params=batch_data['emoca_pose']
                 )
@@ -177,7 +177,7 @@ class Synthesis_Engine:
                 'tex_params': tex_params[idx].detach().float().cpu(),
                 'sh_params': sh_params[idx].detach().float().cpu(),
                 'bbox': batch_data['bbox'][idx].detach().float().cpu(),
-                'emoca_shape': batch_data['emoca_shape'][idx].detach().float().cpu(),
+                'mica_shape': batch_data['mica_shape'][idx].detach().float().cpu(),
                 'emoca_expression': expression_codes[idx].detach().float().cpu(),
                 'emoca_pose': batch_data['emoca_pose'][idx].detach().float().cpu(),
                 'transform_matrix': transform_matrix[idx].detach().float().cpu()

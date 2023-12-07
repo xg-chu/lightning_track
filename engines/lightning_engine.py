@@ -35,30 +35,30 @@ class Lightning_Engine:
         }
         return cameras_kwargs
 
-    def lightning_optimize(self, track_frames, batch_emoca, batch_frames=None, steps=500):
+    def lightning_optimize(self, track_frames, batch_base, batch_frames=None, steps=500):
         batch_size = len(track_frames)
         cameras_kwargs = self._build_cameras_kwargs(batch_size)
         # flame params
-        base_rotation = batch_emoca['emoca_pose'][:, :3].clone().float()
-        batch_emoca['emoca_pose'][:, :3] *= 0
+        base_rotation = batch_base['emoca_pose'][:, :3].clone().float()
+        batch_base['emoca_pose'][:, :3] *= 0
         vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
-            shape_params=batch_emoca['emoca_shape'].float(), 
-            expression_params=batch_emoca['emoca_expression'].float(), 
-            pose_params=batch_emoca['emoca_pose'].float()
+            shape_params=batch_base['mica_shape'].float(), 
+            expression_params=batch_base['emoca_expression'].float(), 
+            pose_params=batch_base['emoca_pose'].float()
         )
         vertices = vertices * self.verts_scale
         pred_lmk_68, pred_lmk_dense = pred_lmk_68 * self.verts_scale, pred_lmk_dense * self.verts_scale
         # build params
         cameras = PerspectiveCameras(**cameras_kwargs)
         base_transform_p3d = self.transform_emoca_to_p3d(
-            base_rotation, pred_lmk_dense, batch_emoca['lmks_dense'], self.image_size
+            base_rotation, pred_lmk_dense, batch_base['lmks_dense'], self.image_size
         )
-        shape_code = batch_emoca['emoca_shape'].float()
+        shape_code = batch_base['mica_shape'].float()
         ori_rotation = matrix_to_rotation_6d(base_transform_p3d[:, :3, :3])
         rotation = torch.nn.Parameter(ori_rotation.clone())
         base_transform_p3d[:, :3, 3] = base_transform_p3d[:, :3, 3] * self.focal_length / 13.0 * self.verts_scale / 5.0
         translation = torch.nn.Parameter(base_transform_p3d[:, :, 3])
-        expression = torch.nn.Parameter(batch_emoca['emoca_expression'].float(), requires_grad=False)
+        expression = torch.nn.Parameter(batch_base['emoca_expression'].float(), requires_grad=False)
         params = [
             {'params': [translation], 'lr': 0.005}, {'params': [rotation], 'lr': 0.005},
             {'params': [expression], 'lr': 0.025}
@@ -67,12 +67,12 @@ class Lightning_Engine:
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.1)
         # run
         for idx in range(steps):
-            gt_lmks_68 = batch_emoca['lmks']
-            gt_lmks_dense = batch_emoca['lmks_dense'][:, self.flame_model.mediapipe_idx]
+            gt_lmks_68 = batch_base['lmks']
+            gt_lmks_dense = batch_base['lmks_dense'][:, self.flame_model.mediapipe_idx]
             vertices, pred_lmk_68, pred_lmk_dense = self.flame_model(
                 shape_params=shape_code, 
                 expression_params=expression, 
-                pose_params=batch_emoca['emoca_pose'].float()
+                pose_params=batch_base['emoca_pose'].float()
             )
             vertices = vertices*self.verts_scale
             pred_lmk_68, pred_lmk_dense = pred_lmk_68*self.verts_scale, pred_lmk_dense*self.verts_scale
@@ -88,7 +88,7 @@ class Lightning_Engine:
             loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 10000
             loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 1000
             loss_exp_norm = torch.sum(expression ** 2) * 0.02
-            loss_rotation_norm = torch.sum((rotation - ori_rotation) ** 2) * 500.0
+            loss_rotation_norm = torch.sum((rotation - ori_rotation) ** 2) * 100.0
             all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm + loss_rotation_norm
             # print(loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item(), loss_rotation_norm.item())
             optimizer.zero_grad()
@@ -99,10 +99,10 @@ class Lightning_Engine:
         transform_matrix = torch.cat([rotation_6d_to_matrix(rotation), translation[:, :, None]], dim=-1)
         for idx, name in enumerate(track_frames):
             lightning_results[name] = {
-                'bbox': batch_emoca['bbox'][idx].detach().float().cpu(),
-                'emoca_shape': shape_code[idx].detach().float().cpu(),
+                'bbox': batch_base['bbox'][idx].detach().float().cpu(),
+                'mica_shape': shape_code[idx].detach().float().cpu(),
                 'emoca_expression': expression[idx].detach().float().cpu(),
-                'emoca_pose': batch_emoca['emoca_pose'][idx].detach().float().cpu(),
+                'emoca_pose': batch_base['emoca_pose'][idx].detach().float().cpu(),
                 'transform_matrix': transform_matrix[idx].detach().float().cpu(),
             }
         if batch_frames is not None:
@@ -122,7 +122,7 @@ class Lightning_Engine:
                     vis_i = frame.clone()
                     vis_i[alpha_images[idx]>0.5] *= 0.5
                     vis_i[alpha_images[idx]>0.5] += (images[idx, alpha_images[idx]>0.5] * 0.5)
-                    bbox = batch_emoca['bbox'][idx].clone()
+                    bbox = batch_base['bbox'][idx].clone()
                     bbox[[0, 2]] *= vis_i.shape[-1]; bbox[[1, 3]] *= vis_i.shape[-2]
                     vis_i = torchvision.utils.draw_bounding_boxes(
                         vis_i.cpu().to(torch.uint8), bbox[None], width=3, colors='green'

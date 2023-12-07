@@ -9,6 +9,7 @@ import torchvision
 from tqdm import tqdm
 
 from utils.lmdb_utils import LMDBEngine
+from engines.mica import MICAEngine
 from engines.emoca import EMOCAEngine
 from engines.lightning_engine import Lightning_Engine
 from engines.synthesis_engine import Synthesis_Engine
@@ -20,6 +21,7 @@ class TrackEngine:
         self._device = device
         # paths and data engine
         self.matting_engine = HumanMattingEngine(device=device)
+        self.mica_engine = MICAEngine(device=device, lazy_init=True)
         self.emoca_engine = EMOCAEngine(device=device, lazy_init=True)
         self.lightning_engine = Lightning_Engine(device=device, lazy_init=True)
         self.synthesis_engine = Synthesis_Engine(device=device, lazy_init=True)
@@ -57,26 +59,30 @@ class TrackEngine:
             meta_data = video_reader.get_metadata()['video']
             return meta_data['fps'][0]
 
-    def track_emoca(self, image_tensor, ):
+    def track_base(self, image_tensor, ):
         # EMOCA
+        mica_result = self.mica_engine.process_frame(image_tensor)
         emoca_result = self.emoca_engine.process_frame(image_tensor)
-        if emoca_result is not None:
+        if emoca_result is not None and mica_result is not None:
             for key in list(emoca_result.keys()):
                 if isinstance(emoca_result[key], torch.Tensor):
                     emoca_result[key] = emoca_result[key].float().cpu().numpy()
-        return emoca_result
+        else:
+            return None
+        base_result = {**mica_result, **emoca_result}
+        return base_result
 
-    def track_lightning(self, emoca_result, lmdb_engine=None, vis_path=None):
+    def track_lightning(self, base_result, lmdb_engine=None, vis_path=None):
         self.lightning_engine.init_model(self.calibration_results, image_size=512)
-        emoca_result = {k: v for k, v in emoca_result.items() if v is not None}
-        mini_batchs = self.build_minibatch(list(emoca_result.keys()))
+        base_result = {k: v for k, v in base_result.items() if v is not None}
+        mini_batchs = self.build_minibatch(list(base_result.keys()))
         if lmdb_engine is not None:
             batch_frames = torch.stack([lmdb_engine[key] for key in mini_batchs[0]][:20]).to(self._device).float()
         else:
             batch_frames = None
         lightning_results = {}
         for mini_batch in tqdm(mini_batchs):
-            mini_batch_emoca = [emoca_result[key] for key in mini_batch]
+            mini_batch_emoca = [base_result[key] for key in mini_batch]
             mini_batch_emoca = torch.utils.data.default_collate(mini_batch_emoca)
             mini_batch_emoca = {k: v.to(self._device) for k, v in mini_batch_emoca.items()}
             lightning_result, visualization = self.lightning_engine.lightning_optimize(
@@ -92,7 +98,7 @@ class TrackEngine:
                     lightning_results[fkey][key] = lightning_results[fkey][key].float().cpu().numpy()
         return lightning_results
 
-    def track_synthesis(self, emoca_result, lightning_result, lmdb_engine, vis_path=None):
+    def track_synthesis(self, base_result, lightning_result, lmdb_engine, vis_path=None):
         self.synthesis_engine.init_model(self.calibration_results)
         lightning_result = {k: v for k, v in lightning_result.items() if v is not None}
         # texture
@@ -110,8 +116,8 @@ class TrackEngine:
             mini_batch_lightning = [lightning_result[key] for key in mini_batch]
             mini_batch_lightning = torch.utils.data.default_collate(mini_batch_lightning)
             mini_batch_lightning = {k: v.to(self._device) for k, v in mini_batch_lightning.items()}
-            mini_batch_lightning['lmks'] = torch.stack([torch.tensor(emoca_result[key]['lmks']) for key in mini_batch]).to(self._device).float()
-            mini_batch_lightning['lmks_dense'] = torch.stack([torch.tensor(emoca_result[key]['lmks_dense']) for key in mini_batch]).to(self._device).float()
+            mini_batch_lightning['lmks'] = torch.stack([torch.tensor(base_result[key]['lmks']) for key in mini_batch]).to(self._device).float()
+            mini_batch_lightning['lmks_dense'] = torch.stack([torch.tensor(base_result[key]['lmks_dense']) for key in mini_batch]).to(self._device).float()
             mini_batch_lightning['frames'] = torch.stack([lmdb_engine[key] for key in mini_batch]).to(self._device).float()
             mini_batch_texture = {
                 'tex_params': texture_result['tex_params'].mean(dim=0, keepdim=True).expand(len(mini_batch), -1).to(self._device).float(),

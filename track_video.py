@@ -27,13 +27,13 @@ class Tracker:
         fps = self.tracker.build_video(video_path, output_path, matting=True, background=0.0)
         lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=False)
         print('Done.')
-        # track emoca
-        emoca_results = self.run_emoca(lmdb_engine, output_path)
+        # track base
+        base_results = self.run_base(lmdb_engine, output_path)
         # track lightning
-        lightning_results = self.run_lightning(emoca_results, lmdb_engine, output_path)
+        lightning_results = self.run_lightning(base_results, lmdb_engine, output_path)
         print(synthesis)
         if synthesis:
-            synthesis_results = self.run_synthesis(emoca_results, lightning_results, lmdb_engine, output_path)
+            synthesis_results = self.run_synthesis(base_results, lightning_results, lmdb_engine, output_path)
             synthesis_results = run_smoothing(synthesis_results, output_path)
             if not no_vis:
                 self.run_visualization(synthesis_results, lmdb_engine, output_path, fps=fps)
@@ -43,24 +43,24 @@ class Tracker:
                 self.run_visualization(lightning_results, lmdb_engine, output_path, fps=fps)
         lmdb_engine.close()
 
-    def run_emoca(self, lmdb_engine, output_path,):
-        print('Track with emoca...')
-        if not os.path.exists(os.path.join(output_path, 'emoca.pkl')):
-            emoca_results = {}
+    def run_base(self, lmdb_engine, output_path,):
+        print('Track with emoca/mica/insightface/mediapipe/...')
+        if not os.path.exists(os.path.join(output_path, 'base.pkl')):
+            base_results = {}
             for key in tqdm(lmdb_engine.keys()):
-                emoca_results[key] = self.tracker.track_emoca(lmdb_engine[key])
-            with open(os.path.join(output_path, 'emoca.pkl'), 'wb') as f:
-                pickle.dump(emoca_results, f)
+                base_results[key] = self.tracker.track_base(lmdb_engine[key])
+            with open(os.path.join(output_path, 'base.pkl'), 'wb') as f:
+                pickle.dump(base_results, f)
         else:
-            with open(os.path.join(output_path, 'emoca.pkl'), 'rb') as f:
-                emoca_results = pickle.load(f)
+            with open(os.path.join(output_path, 'base.pkl'), 'rb') as f:
+                base_results = pickle.load(f)
         print('Done.')
-        return emoca_results
+        return base_results
 
-    def run_lightning(self, emoca_results, lmdb_engine, output_path,):
+    def run_lightning(self, base_results, lmdb_engine, output_path,):
         print('Track lightning...')
         if not os.path.exists(os.path.join(output_path, 'lightning.pkl')):
-            lightning_result = self.tracker.track_lightning(emoca_results, lmdb_engine, output_path)
+            lightning_result = self.tracker.track_lightning(base_results, lmdb_engine, output_path)
             with open(os.path.join(output_path, 'lightning.pkl'), 'wb') as f:
                 pickle.dump(lightning_result, f)
         else:
@@ -69,10 +69,10 @@ class Tracker:
         print('Done.')
         return lightning_result
 
-    def run_synthesis(self, emoca_results, lightning_results, lmdb_engine, output_path,):
+    def run_synthesis(self, base_results, lightning_results, lmdb_engine, output_path,):
         print('Track synthesis...')
         if not os.path.exists(os.path.join(output_path, 'synthesis.pkl')):
-            synthesis_result = self.tracker.track_synthesis(emoca_results, lightning_results, lmdb_engine, output_path)
+            synthesis_result = self.tracker.track_synthesis(base_results, lightning_results, lmdb_engine, output_path)
             with open(os.path.join(output_path, 'synthesis.pkl'), 'wb') as f:
                 pickle.dump(synthesis_result, f)
         else:
@@ -115,7 +115,7 @@ class Tracker:
         vis_images = []
         for frame in tqdm(frames):
             vertices, _, pred_lmk_dense = self.flame_model(
-                shape_params=torch.tensor(data_result[frame]['emoca_shape'], device=self._device)[None],
+                shape_params=torch.tensor(data_result[frame]['mica_shape'], device=self._device)[None],
                 expression_params=torch.tensor(data_result[frame]['emoca_expression'], device=self._device)[None],
                 pose_params=torch.tensor(data_result[frame]['emoca_pose'], device=self._device)[None].float()
             )

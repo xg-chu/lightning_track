@@ -7,7 +7,6 @@ import torch
 import numpy as np
 import torchvision
 import torch.nn as nn
-import face_alignment
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' 
 import mediapipe
 # import face_alignment
@@ -28,9 +27,9 @@ class EMOCAEngine(nn.Module):
         emoca_model = EMOCAV2().to(self.device).eval()
         self.emoca_model = emoca_model
         # landmarks
-        self.lmks_model = face_alignment.FaceAlignment(
-            face_alignment.LandmarksType.TWO_D, device=self.device
-        )
+        # self.lmks_model = face_alignment.FaceAlignment(
+        #     face_alignment.LandmarksType.TWO_D, device=self.device
+        # )
         self.dense_lmks_model = mediapipe.solutions.face_mesh.FaceMesh(
             static_image_mode=False,
             max_num_faces=1, refine_landmarks=True,
@@ -60,11 +59,11 @@ class EMOCAEngine(nn.Module):
             self._init_model()
         # mediapipe
         lmk_image = frame.permute(1, 2, 0)
-        lmks, scores, detected_faces = self.lmks_model.get_landmarks_from_image(
-            lmk_image, return_landmark_score=True, return_bboxes=True
-        )
-        if lmks is None:
-            return None
+        # lmks, scores, detected_faces = self.lmks_model.get_landmarks_from_image(
+        #     lmk_image, return_landmark_score=True, return_bboxes=True
+        # )
+        # if lmks is None:
+        #     return None
         lmk_image = lmk_image.to(torch.uint8).cpu().numpy()
         lmks_dense = self.dense_lmks_model.process(lmk_image)
         if lmks_dense.multi_face_landmarks is None:
@@ -83,11 +82,10 @@ class EMOCAEngine(nn.Module):
         croped_frame = croped_frame.to(self.device)[None]/255.0
         emoca_result = self.emoca_model.encode(croped_frame)
         results = {
-            'emoca_shape': emoca_result['shape'], 
             'emoca_expression': emoca_result['exp'], 
             'emoca_pose': emoca_result['pose'],
-            'lmks': torch.tensor(lmks[0]), 'lmks_dense': lmks_dense,
-            'bbox': bbox
+            'lmks_dense': lmks_dense,
+            # 'lmks': torch.tensor(lmks[0]), 'bbox': bbox
         }
         for key in results.keys():
             if isinstance(results[key], torch.Tensor):
