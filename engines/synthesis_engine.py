@@ -63,7 +63,7 @@ class Synthesis_Engine:
             this_image_size = {0: 64, 1:128, 2:512}[sidx]
             cameras_kwargs = self._build_cameras_kwargs(batch_size, image_size=this_image_size)
             cameras = PerspectiveCameras(R=rotation, T=translation, **cameras_kwargs)
-            tqdm_queue = tqdm(range(this_steps), desc='', leave=True, miniters=1, ncols=120, colour='#95bb72')
+            tqdm_queue = tqdm(range(this_steps), desc='', leave=True, miniters=1, ncols=80, colour='#95bb72')
             gt_images = torchvision.transforms.functional.resize(batch_data['frames'], this_image_size, antialias=True) 
             gt_images = torchvision.transforms.functional.gaussian_blur(gt_images, [7, 7], sigma=[9.0, 9.0])
             for k in tqdm_queue:

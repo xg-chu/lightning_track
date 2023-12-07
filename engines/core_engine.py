@@ -39,7 +39,7 @@ class TrackEngine:
             lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=True)
             video_reader = torchvision.io.VideoReader(src=video_path)
             meta_data = video_reader.get_metadata()['video']
-            for fidx, frame_data in tqdm(enumerate(iter(video_reader)), total=int(meta_data['fps'][0]*meta_data['duration'][0]), ncols=120, colour='#95bb72'):
+            for fidx, frame_data in tqdm(enumerate(iter(video_reader)), total=int(meta_data['fps'][0]*meta_data['duration'][0]), ncols=80, colour='#95bb72'):
                 if meta_data['fps'][0] > 50:
                     if fidx % 2 == 0:
                         continue
@@ -81,7 +81,7 @@ class TrackEngine:
         else:
             batch_frames = None
         lightning_results = {}
-        for mini_batch in tqdm(mini_batchs, ncols=120, colour='#95bb72'):
+        for mini_batch in tqdm(mini_batchs, ncols=80, colour='#95bb72'):
             mini_batch_emoca = [base_result[key] for key in mini_batch]
             mini_batch_emoca = torch.utils.data.default_collate(mini_batch_emoca)
             mini_batch_emoca = {k: v.to(self._device) for k, v in mini_batch_emoca.items()}
@@ -112,7 +112,7 @@ class TrackEngine:
         # tracking
         mini_batchs = self.build_minibatch(list(lightning_result.keys()), batch_size=32)
         synthesis_results = {}
-        for bidx, mini_batch in enumerate(tqdm(mini_batchs)):
+        for bidx, mini_batch in enumerate(tqdm(mini_batchs, ncols=80, colour='#95bb72')):
             mini_batch_lightning = [lightning_result[key] for key in mini_batch]
             mini_batch_lightning = torch.utils.data.default_collate(mini_batch_lightning)
             mini_batch_lightning = {k: v.to(self._device) for k, v in mini_batch_lightning.items()}

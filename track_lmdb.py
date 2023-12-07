@@ -40,7 +40,7 @@ class Tracker:
         print('Track with emoca...')
         if not os.path.exists(os.path.join(output_path, 'emoca.pkl')):
             emoca_results = {}
-            for key in tqdm(lmdb_engine.keys(), ncols=120, colour='#95bb72'):
+            for key in tqdm(lmdb_engine.keys(), ncols=80, colour='#95bb72'):
                 emoca_results[key] = self.tracker.track_emoca(lmdb_engine[key])
             with open(os.path.join(output_path, 'emoca.pkl'), 'wb') as f:
                 pickle.dump(emoca_results, f)
