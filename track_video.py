@@ -111,7 +111,7 @@ class Tracker:
             )
             vis_texture = False
         frames = list(data_result.keys())
-        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:200]
+        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:2000]
         vis_images = []
         for frame in tqdm(frames, ncols=80, colour='#95bb72'):
             vertices, _, pred_lmk_dense = self.flame_model(
@@ -177,7 +177,7 @@ def run_smoothing(lightning_result, output_path):
         # expression.append(smoothed_results[frame_name]['emoca_expression'])
     # pose = smooth_params(np.stack(pose), alpha=0.95)
     # expression = smooth_params(np.stack(expression), alpha=0.95)
-    if len(rotates) < 2000:
+    if len(rotates) < 1000:
         print('Running kalman smoothing...')
         rotates = kalman_smooth_params(np.stack(rotates))
         translates = kalman_smooth_params(np.stack(translates))

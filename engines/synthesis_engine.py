@@ -129,9 +129,9 @@ class Synthesis_Engine:
                 cameras = PerspectiveCameras(
                     R=rotation_6d_to_matrix(rotation), T=translation, **cameras_kwargs
                 )
-                # pred_lmk_68 = cameras.transform_points_screen(
-                #     pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
-                # )[..., :2]
+                pred_lmk_68 = cameras.transform_points_screen(
+                    pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
+                )[..., :2]
                 pred_lmk_dense = cameras.transform_points_screen(
                     pred_lmk_dense, R=rotation_6d_to_matrix(rotation), T=translation
                 )[..., :2]
@@ -142,13 +142,14 @@ class Synthesis_Engine:
                 pred_images, mask_all, mask_face = self.mesh_render(vertices, albedos, cameras=cameras, lights=sh_params, image_size=this_image_size)
                 loss_face = pixel_loss(pred_images, gt_images, mask=mask_face) * 350 
                 loss_head = pixel_loss(pred_images, gt_images, mask=mask_all) * 350 
-                # loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 1000
-                # loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 2000
+                loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 1000
+                loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, this_image_size) * 2000
                 loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 5000
                 loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 6000
                 loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, this_image_size) * 1000
                 loss_exp_norm = torch.sum(expression_codes ** 2) * 0.02
                 all_loss = (loss_face + loss_head) + loss_exp_norm + \
+                           loss_lmk_68 + loss_lmk_oval + \
                            loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure 
                 optimizer.zero_grad()
                 all_loss.backward()
