@@ -21,12 +21,13 @@ from insightface.app.common import Face
 __all__ = ['FaceAnalysis']
 
 class FaceAnalysis:
-    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, **kwargs):
+    def __init__(self, ckpt_path='insightface', allowed_modules=None, **kwargs):
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
-        self.model_dir = ensure_available('models', name, root=root)
+        self.model_dir = ckpt_path
         onnx_files = glob.glob(osp.join(self.model_dir, '*.onnx'))
         onnx_files = sorted(onnx_files)
+        # print(onnx_files)
         for onnx_file in onnx_files:
             model = model_zoo.get_model(onnx_file, **kwargs)
             if model is None:
@@ -48,7 +49,7 @@ class FaceAnalysis:
     def prepare(self, ctx_id, det_thresh=0.5, det_size=(640, 640)):
         self.det_thresh = det_thresh
         assert det_size is not None
-        print('set det-size:', det_size)
+        # print('set det-size:', det_size)
         self.det_size = det_size
         for taskname, model in self.models.items():
             if taskname=='detection':

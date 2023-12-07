@@ -60,11 +60,11 @@ class Lightning_Engine:
         translation = torch.nn.Parameter(base_transform_p3d[:, :, 3])
         expression = torch.nn.Parameter(batch_base['emoca_expression'].float(), requires_grad=False)
         params = [
-            {'params': [translation], 'lr': 0.005}, {'params': [rotation], 'lr': 0.005},
+            {'params': [translation], 'lr': 0.05}, {'params': [rotation], 'lr': 0.005},
             {'params': [expression], 'lr': 0.025}
         ]
         optimizer = torch.optim.Adam(params)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.5)
         # run
         for idx in range(steps):
             gt_lmks_68 = batch_base['lmks']
@@ -126,9 +126,12 @@ class Lightning_Engine:
                     bbox[[0, 2]] *= vis_i.shape[-1]; bbox[[1, 3]] *= vis_i.shape[-2]
                     vis_i = torchvision.utils.draw_bounding_boxes(
                         vis_i.cpu().to(torch.uint8), bbox[None], width=3, colors='green'
-                    ).float()
+                    )
+                    vis_i = torchvision.utils.draw_keypoints(vis_i, gt_lmks_68[idx:idx+1], colors="red", radius=1.5)
+                    vis_i = torchvision.utils.draw_keypoints(vis_i, pred_lmk_68[idx:idx+1], colors="green", radius=1.5)
+                    # vis_i = torchvision.utils.draw_keypoints(vis_i, gt_lmks_dense[idx:idx+1], colors="blue", radius=1.5)
                     # vis_image = torchvision.utils.make_grid([vis_i.cpu(), points_image[idx].cpu(), ], nrow=2)
-                    vis_images.append(vis_i.cpu()/255.0)
+                    vis_images.append(vis_i.float().cpu()/255.0)
                 visualization = torchvision.utils.make_grid(vis_images, nrow=4)
         else:
             visualization = None
