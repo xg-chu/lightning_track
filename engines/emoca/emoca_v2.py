@@ -15,7 +15,7 @@ class EMOCAV2(torch.nn.Module):
         self.E_expression.encoder.load_state_dict(self.E_flame.encoder.state_dict())
 
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-        _ckpt_path = os.path.join(_abs_script_path, 'ckpts', 'emoca_v2.ckpt')
+        _ckpt_path = os.path.join(_abs_script_path, 'assets', 'emoca_v2.ckpt')
         ckpt = torch.load(_ckpt_path, map_location='cpu')['state_dict']
         trimmed_ckpt = {}
         for key in list(ckpt.keys()):
