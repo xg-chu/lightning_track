@@ -12,16 +12,14 @@ import os.path as osp
 
 import numpy as np
 import onnxruntime
-from numpy.linalg import norm
 
-from insightface.model_zoo import model_zoo
-from insightface.utils import DEFAULT_MP_NAME, ensure_available
-from insightface.app.common import Face
+from .common import Face
+from .model_zoo import get_model
 
 __all__ = ['FaceAnalysis']
 
 class FaceAnalysis:
-    def __init__(self, ckpt_path='insightface', allowed_modules=None, **kwargs):
+    def __init__(self, ckpt_path='insightface'):
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
         self.model_dir = ckpt_path
@@ -29,19 +27,8 @@ class FaceAnalysis:
         onnx_files = sorted(onnx_files)
         # print(onnx_files)
         for onnx_file in onnx_files:
-            model = model_zoo.get_model(onnx_file, **kwargs)
-            if model is None:
-                pass
-                # print('model not recognized:', onnx_file)
-            elif allowed_modules is not None and model.taskname not in allowed_modules:
-                # print('model ignore:', onnx_file, model.taskname)
-                del model
-            elif model.taskname not in self.models and (allowed_modules is None or model.taskname in allowed_modules):
-                # print('find model:', onnx_file, model.taskname, model.input_shape, model.input_mean, model.input_std)
-                self.models[model.taskname] = model
-            else:
-                # print('duplicated model task type, ignore:', onnx_file, model.taskname)
-                del model
+            model = get_model(onnx_file)
+            self.models[model.taskname] = model
         assert 'detection' in self.models
         self.det_model = self.models['detection']
 

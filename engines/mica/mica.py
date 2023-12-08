@@ -14,13 +14,12 @@ class MICA(torch.nn.Module):
         self.flameModel = Generator(512, 300, 300, 3)
         # load model
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-        model_path = os.path.join(_abs_script_path, 'assets', 'mica.pth')
+        model_path = os.path.join(_abs_script_path, 'assets', 'mica_clean.pth')
         checkpoint = torch.load(model_path)
         if 'arcface' in checkpoint:
             self.arcface.load_state_dict(checkpoint['arcface'])
         if 'flameModel' in checkpoint:
-            self.flameModel.load_state_dict(checkpoint['flameModel'], strict=False)
-        # import ipdb; ipdb.set_trace()
+            self.flameModel.load_state_dict(checkpoint['flameModel'])
 
     def forward(self, arcface_imgs):
         identity_code = F.normalize(self.arcface(arcface_imgs))

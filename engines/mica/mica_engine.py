@@ -2,11 +2,9 @@ import os
 import inspect
 import cv2 
 import torch
-from .face_analysis import FaceAnalysis
-from insightface.app.common import Face
-from insightface.utils import face_align
 
 from .mica import MICA
+from .insightface import FaceAnalysis, Face, face_align
 
 
 class MICAEngine(torch.nn.Module):
@@ -23,9 +21,7 @@ class MICAEngine(torch.nn.Module):
         # landmarks
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
         _ckpt_path = os.path.join(_abs_script_path, 'assets')
-        retina_face = FaceAnalysis(
-            ckpt_path=_ckpt_path, allowed_modules=['detection', 'landmark_3d_68']
-        )
+        retina_face = FaceAnalysis(ckpt_path=_ckpt_path)
         retina_face.prepare(ctx_id=0, det_size=(512, 512), det_thresh=0.4)
         self.retina_face = retina_face
 

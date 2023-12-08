@@ -61,7 +61,8 @@ class TrackEngine:
 
     def track_base(self, image_tensor, ):
         # EMOCA
-        sys.stdout = open(os.devnull, 'w')
+        # sys.stdout = open(os.devnull, 'w')
+        # sys.stdout = sys.__stdout__
         mica_result = self.mica_engine.process_frame(image_tensor)
         emoca_result = self.emoca_engine.process_frame(image_tensor)
         if emoca_result is not None and mica_result is not None:
@@ -70,7 +71,6 @@ class TrackEngine:
                     emoca_result[key] = emoca_result[key].float().cpu().numpy()
         else:
             return None
-        sys.stdout = sys.__stdout__
         base_result = {**mica_result, **emoca_result}
         return base_result
 

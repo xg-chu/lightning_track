@@ -1,0 +1,1 @@
+Reference: [MODNet](https://github.com/ZHKKKe/MODNet), [StyleMatte](https://github.com/chroneus/stylematte).

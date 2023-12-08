@@ -208,8 +208,8 @@ def list_all_files(dir_path):
 
 
 if __name__ == '__main__':
-    import warnings
-    warnings.simplefilter("ignore")
+    # import warnings
+    # warnings.simplefilter("ignore")
     # warnings.simplefilter("ignore", category=FutureWarning, lineno=0, append=False)
     import argparse
     parser = argparse.ArgumentParser()

@@ -12,7 +12,7 @@ class StyleMatteEngine(torch.nn.Module):
         self.normalize = torchvision.transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         # load dict
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-        _ckpt_path = os.path.join(_abs_script_path, 'ckpts', 'stylematte_synth.pth')
+        _ckpt_path = os.path.join(_abs_script_path, 'assets', 'stylematte_synth.pth')
         state_dict = torch.load(_ckpt_path, map_location='cpu')
         # build model
         model = StyleMatte()
