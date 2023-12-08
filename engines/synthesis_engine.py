@@ -1,6 +1,6 @@
 import torch
 import torchvision
-from tqdm import tqdm
+from tqdm.rich import tqdm
 from pytorch3d.renderer import PerspectiveCameras, look_at_view_transform
 from pytorch3d.transforms import matrix_to_rotation_6d, rotation_6d_to_matrix
 
@@ -19,9 +19,8 @@ class Synthesis_Engine:
         # build flame
         self.flame_model = FLAMEDense(n_shape=100, n_exp=50).to(self._device)
         self.flame_texture = FLAMETex(n_tex=50).to(self._device)
-        self.flame_face_mask = self.flame_texture.masks.face
         self.mesh_render = Texture_Renderer(
-            obj_path='./engines/FLAME/assets/head_template_mesh.obj', flame_mask=self.flame_face_mask, device=self._device
+            tuv=self.flame_texture.get_tuv(), flame_mask=self.flame_texture.get_face_mask(), device=self._device
         )
         print('Done.')
 

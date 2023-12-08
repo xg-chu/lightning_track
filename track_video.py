@@ -6,7 +6,7 @@ import sys
 import torch
 import pickle
 import numpy as np
-from tqdm import tqdm
+from tqdm.rich import tqdm
 from copy import deepcopy
 sys.path.append('./')
 
@@ -95,10 +95,9 @@ class Tracker:
                 data_result[list(data_result.keys())[0]]['tex_params'], device=self._device
             )[None]
             self.flame_texture = FLAMETex(n_tex=50).to(self._device)
-            self.flame_face_mask = self.flame_texture.masks.face
             mesh_render = Texture_Renderer(
-                obj_path='./engines/FLAME/assets/head_template_mesh.obj', 
-                flame_mask=self.flame_face_mask, device=self._device
+                tuv = self.flame_texture.get_tuv(), flame_mask=self.flame_texture.get_face_mask(), 
+                device=self._device
             )
             albedos = self.flame_texture(texture_params, image_size=512)
             sh_params = torch.tensor(
@@ -208,8 +207,9 @@ def list_all_files(dir_path):
 
 
 if __name__ == '__main__':
-    # import warnings
-    # warnings.simplefilter("ignore")
+    import warnings
+    from tqdm.std import TqdmExperimentalWarning
+    warnings.simplefilter("ignore", category=TqdmExperimentalWarning, lineno=0, append=False)
     # warnings.simplefilter("ignore", category=FutureWarning, lineno=0, append=False)
     import argparse
     parser = argparse.ArgumentParser()

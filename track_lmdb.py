@@ -6,7 +6,7 @@ import sys
 import torch
 import pickle
 import numpy as np
-from tqdm import tqdm
+from tqdm.rich import tqdm
 from copy import deepcopy
 sys.path.append('./')
 

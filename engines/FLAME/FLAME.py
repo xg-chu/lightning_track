@@ -24,51 +24,40 @@ class FLAME(nn.Module):
         # print("creating the FLAME Model")
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
         self.flame_path = os.path.join(_abs_script_path, 'assets')
-        with open(os.path.join(self.flame_path, 'generic_model.pkl'), 'rb') as f:
-            ss = pickle.load(f, encoding='latin1')
-            flame_model = Struct(**ss)
+        flame_ckpt = torch.load(os.path.join(self.flame_path, 'FLAME.pth'))
+        flame_model = flame_ckpt['flame_model']
+        flame_lmk = flame_ckpt['lmk_embeddings']
+        flame_lmk_mediapipe = flame_ckpt['lmk_embeddings_mediapipe']
         self.dtype = torch.float32
-        self.register_buffer('faces_tensor', to_tensor(to_np(flame_model.f, dtype=np.int64), dtype=torch.long))
-        # The vertices of the template model
-        self.register_buffer('v_template', to_tensor(to_np(flame_model.v_template), dtype=self.dtype))
-        # The shape components and expression
-        shapedirs = to_tensor(to_np(flame_model.shapedirs), dtype=self.dtype)
-        shapedirs = torch.cat([shapedirs[:, :, :n_shape], shapedirs[:, :, 300:300 + n_exp]], 2)
-        self.register_buffer('shapedirs', shapedirs)
-        # The pose components
-        num_pose_basis = flame_model.posedirs.shape[-1]
-        posedirs = np.reshape(flame_model.posedirs, [-1, num_pose_basis]).T
-        self.register_buffer('posedirs', to_tensor(to_np(posedirs), dtype=self.dtype))
-        #
-        self.register_buffer('J_regressor', to_tensor(to_np(flame_model.J_regressor), dtype=self.dtype))
-        parents = to_tensor(to_np(flame_model.kintree_table[0])).long();
+        self.register_buffer('faces_tensor', flame_model['f'])
+        self.register_buffer('v_template', flame_model['v_template'])
+        shapedirs = flame_model['shapedirs']
+        self.register_buffer('shapedirs', torch.cat([shapedirs[:, :, :n_shape], shapedirs[:, :, 300:300 + n_exp]], 2))
+        num_pose_basis = flame_model['posedirs'].shape[-1]
+        self.register_buffer('posedirs', flame_model['posedirs'].reshape(-1, num_pose_basis).T)
+        self.register_buffer('J_regressor', flame_model['J_regressor'])
+        parents = flame_model['kintree_table'][0]
         parents[0] = -1
         self.register_buffer('parents', parents)
-        self.register_buffer('lbs_weights', to_tensor(to_np(flame_model.weights), dtype=self.dtype))
+        self.register_buffer('lbs_weights', flame_model['weights'])
         # Fixing Eyeball and neck rotation
-        default_eyball_pose = torch.zeros([1, 6], dtype=self.dtype, requires_grad=False)
+        default_eyball_pose = torch.zeros([1, 6], dtype=torch.float32, requires_grad=False)
         self.register_parameter('eye_pose', nn.Parameter(default_eyball_pose, requires_grad=False))
-        default_neck_pose = torch.zeros([1, 3], dtype=self.dtype, requires_grad=False)
+        default_neck_pose = torch.zeros([1, 3], dtype=torch.float32, requires_grad=False)
         self.register_parameter('neck_pose', nn.Parameter(default_neck_pose, requires_grad=False))
 
         # Static and Dynamic Landmark embeddings for FLAME
-        lmk_embeddings = np.load(
-            os.path.join(self.flame_path, 'landmark_embedding.npy'), 
-            allow_pickle=True, encoding='latin1'
-        )
-        lmk_embeddings = lmk_embeddings[()]
-        self.register_buffer('lmk_faces_idx', torch.tensor(lmk_embeddings['static_lmk_faces_idx'], dtype=torch.long))
-        self.register_buffer('lmk_bary_coords',
-                             torch.tensor(lmk_embeddings['static_lmk_bary_coords'], dtype=self.dtype))
-        self.register_buffer('dynamic_lmk_faces_idx',
-                             lmk_embeddings['dynamic_lmk_faces_idx'].to(dtype=torch.long))
-        self.register_buffer('dynamic_lmk_bary_coords',
-                             lmk_embeddings['dynamic_lmk_bary_coords'].to(dtype=self.dtype))
-        self.register_buffer('full_lmk_faces_idx', torch.tensor(lmk_embeddings['full_lmk_faces_idx'], dtype=torch.long))
-        self.register_buffer('full_lmk_bary_coords',
-                             torch.tensor(lmk_embeddings['full_lmk_bary_coords'], dtype=self.dtype))
+        self.register_buffer('lmk_faces_idx', flame_lmk['static_lmk_faces_idx'])
+        self.register_buffer('lmk_bary_coords', flame_lmk['static_lmk_bary_coords'].to(dtype=self.dtype))
+        self.register_buffer('dynamic_lmk_faces_idx', flame_lmk['dynamic_lmk_faces_idx'].to(dtype=torch.long))
+        self.register_buffer('dynamic_lmk_bary_coords', flame_lmk['dynamic_lmk_bary_coords'].to(dtype=self.dtype))
+        self.register_buffer('full_lmk_faces_idx', flame_lmk['full_lmk_faces_idx'].to(dtype=torch.long))
+        self.register_buffer('full_lmk_bary_coords', flame_lmk['full_lmk_bary_coords'].to(dtype=self.dtype))
 
-        
+        # static MEDIAPIPE landmark embeddings for FLAME
+        self.register_buffer('lmk_faces_idx_mediapipe', flame_lmk_mediapipe['lmk_face_idx'])
+        self.register_buffer('lmk_bary_coords_mediapipe', flame_lmk_mediapipe['lmk_b_coords'])
+        self.register_buffer('mediapipe_idx', flame_lmk_mediapipe['landmark_indices'])
 
         neck_kin_chain = [];
         NECK_IDX = 1
@@ -183,20 +172,6 @@ class FLAMEDense(FLAME):
             self, n_shape, n_exp
         ):
         super().__init__(n_shape, n_exp)
-        # static MEDIAPIPE landmark embeddings for FLAME
-        lmk_embeddings_mediapipe = np.load(
-            os.path.join(self.flame_path, 'mediapipe_landmark_embedding.npz'),
-            allow_pickle=True, encoding='latin1'
-        )
-        self.register_buffer(
-            'lmk_faces_idx_mediapipe', 
-            torch.tensor(lmk_embeddings_mediapipe['lmk_face_idx'].astype(np.int64), dtype=torch.long)
-        )
-        self.register_buffer(
-            'lmk_bary_coords_mediapipe',
-            torch.tensor(lmk_embeddings_mediapipe['lmk_b_coords'], dtype=self.dtype)
-        )
-        self.mediapipe_idx = lmk_embeddings_mediapipe['landmark_indices'].astype(int)
         
     def forward(self, shape_params=None, expression_params=None, pose_params=None, eye_pose_params=None):
         vertices, landmarks2d_68, landmarks3d = super().forward(
@@ -218,29 +193,33 @@ class FLAMETex(nn.Module):
         super(FLAMETex, self).__init__()
         _abs_script_path = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
         self.flame_path = os.path.join(_abs_script_path, 'assets')
-        tex_space = np.load(os.path.join(self.flame_path, 'FLAME_texture.npz'))
+        tex_space = torch.load(os.path.join(self.flame_path, 'FLAME_texture.pth'))
         # FLAME texture
-        if 'tex_dir' in tex_space.files:
-            mu_key = 'mean'
-            pc_key = 'tex_dir'
-            n_pc = 200
-            scale = 1
-        # BFM to FLAME texture
-        else:
-            mu_key = 'MU'
-            pc_key = 'PC'
-            n_pc = 199
-            scale = 255.0
-        texture_mean = tex_space[mu_key].reshape(1, -1)
-        texture_basis = tex_space[pc_key].reshape(-1, n_pc)
-        texture_mean = torch.from_numpy(texture_mean).float()[None, ...] * scale
-        texture_basis = torch.from_numpy(texture_basis[:, :n_tex]).float()[None, ...] * scale
+        scale = 1
+        texture_mean = tex_space['mean'].reshape(1, -1)
+        texture_basis = tex_space['tex_dir'].reshape(-1, 200)
+        texture_mean = texture_mean.float()[None, ...] * scale
+        texture_basis = texture_basis[:, :n_tex].float()[None, ...] * scale
         self.register_buffer('texture_mean', texture_mean)
         self.register_buffer('texture_basis', texture_basis)
+        self.register_buffer('verts_uvs', tex_space['verts_uvs'].float())
+        self.register_buffer('verts_idx', tex_space['verts_idx'].long())
+        self.register_buffer('textures_idx', tex_space['textures_idx'].long())
         # MASK
-        with open(os.path.join(self.flame_path, 'FLAME_masks.pkl'), 'rb') as f:
-            ss = pickle.load(f, encoding='latin1')
-            self.masks = Struct(**ss)
+        self.masks = tex_space['FLAME_masks']
+        # with open(os.path.join(self.flame_path, 'FLAME_masks.pkl'), 'rb') as f:
+        #     ss = pickle.load(f, encoding='latin1')
+        #     self.masks = Struct(**ss)
+        # with open(os.path.join('FLAME_masks.pkl'), 'rb') as f:
+        #     ss = pickle.load(f, encoding='latin1')
+
+    def get_face_mask(self, ):
+        # 'eye_region', 'neck', 'left_eyeball', 'right_eyeball', 'right_ear', 'right_eye_region', 'forehead', 
+        # 'lips', 'nose', 'scalp', 'boundary', 'face', 'left_ear', 'left_eye_region'
+        return self.masks['face']
+
+    def get_tuv(self, ):
+        return {'verts_uvs': self.verts_uvs, 'verts_idx': self.verts_idx, 'textures_idx': self.textures_idx}
 
     def forward(self, texcode, image_size=512):
         texture = self.texture_mean + (self.texture_basis * texcode[:, None, :]).sum(-1)
@@ -248,17 +227,6 @@ class FLAMETex(nn.Module):
         texture = torch.nn.functional.interpolate(texture, image_size, mode='bilinear')
         texture = texture[:, [2, 1, 0], :, :]
         return texture / 255.
-
-
-def to_tensor(array, dtype=torch.float32):
-    if 'torch.tensor' not in str(type(array)):
-        return torch.tensor(array, dtype=dtype)
-
-
-def to_np(array, dtype=np.float32):
-    if 'scipy.sparse' in str(type(array)):
-        array = array.todense()
-    return np.array(array, dtype=dtype)
 
 
 class Struct(object):

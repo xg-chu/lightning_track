@@ -6,7 +6,7 @@ import sys
 import torch
 import random
 import torchvision
-from tqdm import tqdm
+from tqdm.rich import tqdm
 
 from utils.lmdb_utils import LMDBEngine
 from engines.mica import MICAEngine

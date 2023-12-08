@@ -107,15 +107,22 @@ class Point_Renderer(nn.Module):
 
 
 class Texture_Renderer(nn.Module):
-    def __init__(self, obj_path, flame_mask=None, device='cpu'):
+    def __init__(self, obj_filename=None, tuv=None, flame_mask=None, device='cpu'):
         super(Texture_Renderer, self).__init__()
         self.device = device
         # objects
-        # obj_filename = os.path.join(flame_path, 'FLAME_embedding', 'head_template_mesh.obj')
-        _, faces, aux = load_obj(obj_path, load_textures=False)
-        self.uvverts = aux.verts_uvs[None, ...].to(self.device)  # (N, V, 2)
-        self.uvfaces = faces.textures_idx[None, ...].to(self.device)  # (N, F, 3)
-        self.faces = faces.verts_idx[None, ...].to(self.device) # (N, F, 3)
+        if obj_filename is not None:
+            _, faces, aux = load_obj(obj_filename, load_textures=False)
+            self.uvverts = aux.verts_uvs[None, ...].to(self.device)  # (N, V, 2)
+            self.uvfaces = faces.textures_idx[None, ...].to(self.device)  # (N, F, 3)
+            self.faces = faces.verts_idx[None, ...].to(self.device) # (N, F, 3)
+        elif tuv is not None:
+            import numpy as np
+            self.uvverts = tuv['verts_uvs'][None, ...].to(self.device)  # (N, V, 2)
+            self.uvfaces = tuv['textures_idx'][None, ...].to(self.device) # (N, F, 3)
+            self.faces = tuv['verts_idx'][None, ...].to(self.device) # (N, F, 3)
+        else:
+            raise NotImplementedError('Must have faces and uvs.')
         # setting
         self.lights = AmbientLights(device=self.device)
         # flame mask
