@@ -26,12 +26,10 @@ class Tracker:
         print('Processing video data...')
         fps = self.tracker.build_video(video_path, output_path, matting=True, background=0.0)
         lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=False)
-        print('Done.')
         # track base
         base_results = self.run_base(lmdb_engine, output_path)
         # track lightning
         lightning_results = self.run_lightning(base_results, lmdb_engine, output_path)
-        print(synthesis)
         if synthesis:
             synthesis_results = self.run_synthesis(base_results, lightning_results, lmdb_engine, output_path)
             synthesis_results = run_smoothing(synthesis_results, output_path)
@@ -54,7 +52,6 @@ class Tracker:
         else:
             with open(os.path.join(output_path, 'base.pkl'), 'rb') as f:
                 base_results = pickle.load(f)
-        print('Done.')
         return base_results
 
     def run_lightning(self, base_results, lmdb_engine, output_path,):
@@ -66,7 +63,6 @@ class Tracker:
         else:
             with open(os.path.join(output_path, 'lightning.pkl'), 'rb') as f:
                 lightning_result = pickle.load(f)
-        print('Done.')
         return lightning_result
 
     def run_synthesis(self, base_results, lightning_results, lmdb_engine, output_path,):
@@ -78,7 +74,6 @@ class Tracker:
         else:
             with open(os.path.join(output_path, 'synthesis.pkl'), 'rb') as f:
                 synthesis_result = pickle.load(f)
-        print('Done.')
         return synthesis_result
 
     def run_visualization(self, data_result, lmdb_engine, output_path, fps=25.0):
@@ -147,7 +142,6 @@ class Tracker:
         torchvision.io.write_video(
             os.path.join(output_path, 'tracked.mp4'), vis_images, fps=fps
         )
-        print('Done.')
 
 
 def run_smoothing(lightning_result, output_path):
@@ -192,7 +186,6 @@ def run_smoothing(lightning_result, output_path):
         rotation = rotation_6d_to_matrix(torch.tensor(rotates[fidx])).numpy()
         affine_matrix = np.concatenate([rotation, translates[fidx][:, None]], axis=-1)
         smoothed_results[frame_name]['transform_matrix'] = affine_matrix
-    print('Done')
     return smoothed_results
 
 
@@ -209,6 +202,7 @@ def list_all_files(dir_path):
 if __name__ == '__main__':
     import warnings
     from tqdm.std import TqdmExperimentalWarning
+    warnings.simplefilter("ignore", category=UserWarning, lineno=0, append=False)
     warnings.simplefilter("ignore", category=TqdmExperimentalWarning, lineno=0, append=False)
     # warnings.simplefilter("ignore", category=FutureWarning, lineno=0, append=False)
     import argparse
