@@ -1,4 +1,4 @@
-wget https://github.com/Purkialo/GPAvatar/releases/download/resources/resources.tar ./resources.tar
+wget https://github.com/xg-chu/lightning_track/releases/download/resources/resources.tar ./resources.tar
 tar -xvf resources.tar
 mv resources/emoca/* ./engines/emoca/assets/
 mv resources/FLAME/* ./engines/FLAME/assets/
