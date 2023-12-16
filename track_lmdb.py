@@ -38,8 +38,6 @@ class Tracker:
     def run_base(self, lmdb_engine, output_path, ):
         print('Track with emoca/mica/insightface/mediapipe/...')
         all_keys = lmdb_engine.keys()
-        random.shuffle(all_keys)
-        all_keys = all_keys[:30]
         if not os.path.exists(os.path.join(output_path, 'base.pkl')):
             base_results = {}
             for key in tqdm(all_keys, ncols=80, colour='#95bb72'):
