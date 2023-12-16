@@ -34,11 +34,11 @@ class Tracker:
             synthesis_results = self.run_synthesis(base_results, lightning_results, lmdb_engine, output_path)
             synthesis_results = run_smoothing(synthesis_results, output_path)
             if not no_vis:
-                self.run_visualization(synthesis_results, lmdb_engine, output_path, fps=fps)
+                self.run_visualization(base_results, synthesis_results, lmdb_engine, output_path, fps=fps)
         else:
             lightning_results = run_smoothing(lightning_results, output_path)
             if not no_vis:
-                self.run_visualization(lightning_results, lmdb_engine, output_path, fps=fps)
+                self.run_visualization(base_results, lightning_results, lmdb_engine, output_path, fps=fps)
         lmdb_engine.close()
 
     def run_base(self, lmdb_engine, output_path,):
@@ -76,7 +76,7 @@ class Tracker:
                 synthesis_result = pickle.load(f)
         return synthesis_result
 
-    def run_visualization(self, data_result, lmdb_engine, output_path, fps=25.0):
+    def run_visualization(self, base_results, data_result, lmdb_engine, output_path, fps=25.0):
         import torchvision
         from engines.FLAME import FLAMEDense, FLAMETex
         from utils.renderer_utils import Mesh_Renderer, Texture_Renderer
@@ -105,39 +105,47 @@ class Tracker:
             )
             vis_texture = False
         frames = list(data_result.keys())
-        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:2000]
+        frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))[:300]
         vis_images = []
         for frame in tqdm(frames, ncols=80, colour='#95bb72'):
-            vertices, _, pred_lmk_dense = self.flame_model(
+            vertices, _, _ = self.flame_model(
                 shape_params=torch.tensor(data_result[frame]['mica_shape'], device=self._device)[None],
                 expression_params=torch.tensor(data_result[frame]['emoca_expression'], device=self._device)[None],
                 pose_params=torch.tensor(data_result[frame]['emoca_pose'], device=self._device)[None].float()
             )
-            vertices, pred_lmk_dense = vertices*self.verts_scale, pred_lmk_dense*self.verts_scale
+            vertices = vertices * self.verts_scale
+            gt_lmk_68 = torch.tensor(base_results[frame]['lmks'])[None]
+            gt_lmk_dense = torch.tensor(base_results[frame]['lmks_dense'])[self.flame_model.mediapipe_idx.cpu()][None]
             if vis_texture:
                 images, masks_all, masks_face = mesh_render(
                     vertices, albedos, image_size=512, transform_matrix=torch.tensor(data_result[frame]['transform_matrix'], device=self._device)[None],
                     focal_length=self.focal_length, principal_point=self.principal_point, lights=sh_params
                 )
                 images = (images * 255.0).clamp(0, 255)
-                masks_face = masks_face.expand(-1, 3, -1, -1)
-                vis_image_0 = lmdb_engine[frame][None].to(self._device).float()
+                masks_face = masks_face[0].expand(3, -1, -1)
+                vis_image_0 = lmdb_engine[frame].to(self._device).float()
                 vis_image_1 = vis_image_0.clone()
-                vis_image_1[masks_face] = images[masks_face]
-                vis_image = torchvision.utils.make_grid([vis_image_0[0], vis_image_1[0], images[0]], nrow=3, padding=0)[None]
-                vis_images.append(vis_image.cpu())
+                vis_image_1[masks_face] = images[0, masks_face]
+                vis_image_1 = vis_image_1.cpu().to(torch.uint8)
+                vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_68, colors="red", radius=1.5)
+                vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_dense, colors="blue", radius=1.5)
+                vis_image = torchvision.utils.make_grid([vis_image_0.cpu(), vis_image_1.cpu(), images[0].cpu()], nrow=3, padding=0)[None]
+                vis_images.append(vis_image)
             else:
                 images, alpha_images = mesh_render(
                     vertices, transform_matrix=torch.tensor(data_result[frame]['transform_matrix'], device=self._device)[None],
                     focal_length=self.focal_length, principal_point=self.principal_point
                 )
-                alpha_images = alpha_images.expand(-1, 3, -1, -1)
-                vis_image_0 = lmdb_engine[frame][None].to(self._device).float()
+                alpha_images = alpha_images[0].expand(3, -1, -1)
+                vis_image_0 = lmdb_engine[frame].to(self._device).float()
                 vis_image_1 = vis_image_0.clone()
                 vis_image_1[alpha_images>0.5] *= 0.3
-                vis_image_1[alpha_images>0.5] += (images[alpha_images>0.5] * 0.7)
-                vis_image = torchvision.utils.make_grid([vis_image_0[0], vis_image_1[0], images[0]], nrow=3, padding=0)[None]
-                vis_images.append(vis_image.cpu())
+                vis_image_1[alpha_images>0.5] += (images[0, alpha_images>0.5] * 0.7)
+                vis_image_1 = vis_image_1.cpu().to(torch.uint8)
+                vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_68, colors="red", radius=1.5)
+                vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_dense, colors="blue", radius=1.5)
+                vis_image = torchvision.utils.make_grid([vis_image_0.cpu(), vis_image_1.cpu(), images[0].cpu()], nrow=3, padding=0)[None]
+                vis_images.append(vis_image)
         vis_images = torch.cat(vis_images, dim=0).to(torch.uint8).permute(0, 2, 3, 1)
         torchvision.io.write_video(
             os.path.join(output_path, 'tracked.mp4'), vis_images, fps=fps
@@ -158,7 +166,7 @@ def run_smoothing(lightning_result, output_path):
         smoothed_data = kf.em(data).smooth(data)[0]
         return smoothed_data
     smoothed_results = {}
-    expression, pose, rotates, translates = [], [], [], []
+    shapecode, expression, pose, rotates, translates = [], [], [], [], []
     frames = list(lightning_result.keys())
     frames = sorted(frames, key=lambda x: int(x.split('_')[-1]))
     for frame_name in frames:
@@ -166,11 +174,13 @@ def run_smoothing(lightning_result, output_path):
         transform_matrix = smoothed_results[frame_name]['transform_matrix']
         rotates.append(matrix_to_rotation_6d(torch.tensor(transform_matrix[:3, :3])).numpy())
         translates.append(transform_matrix[:3, 3])
+        shapecode.append(smoothed_results[frame_name]['mica_shape'])
         # pose.append(smoothed_results[frame_name]['emoca_pose'])
         # expression.append(smoothed_results[frame_name]['emoca_expression'])
     # pose = smooth_params(np.stack(pose), alpha=0.95)
     # expression = smooth_params(np.stack(expression), alpha=0.95)
-    if len(rotates) < 1000:
+    shapecode = np.stack(shapecode).mean(axis=0)
+    if len(rotates) < 2000:
         print('Running kalman smoothing...')
         rotates = kalman_smooth_params(np.stack(rotates))
         translates = kalman_smooth_params(np.stack(translates))
@@ -186,6 +196,7 @@ def run_smoothing(lightning_result, output_path):
         rotation = rotation_6d_to_matrix(torch.tensor(rotates[fidx])).numpy()
         affine_matrix = np.concatenate([rotation, translates[fidx][:, None]], axis=-1)
         smoothed_results[frame_name]['transform_matrix'] = affine_matrix
+        smoothed_results[frame_name]['mica_shape'] = shapecode
     return smoothed_results
 
 

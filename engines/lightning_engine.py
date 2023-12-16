@@ -35,7 +35,7 @@ class Lightning_Engine:
         }
         return cameras_kwargs
 
-    def lightning_optimize(self, track_frames, batch_base, batch_frames=None, steps=500):
+    def lightning_optimize(self, track_frames, batch_base, batch_frames=None, steps=250):
         batch_size = len(track_frames)
         cameras_kwargs = self._build_cameras_kwargs(batch_size)
         # flame params
@@ -64,7 +64,7 @@ class Lightning_Engine:
             {'params': [expression], 'lr': 0.025}
         ]
         optimizer = torch.optim.Adam(params)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.5)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=steps, gamma=0.1)
         # run
         for idx in range(steps):
             gt_lmks_68 = batch_base['lmks']
@@ -83,14 +83,14 @@ class Lightning_Engine:
                 pred_lmk_68, R=rotation_6d_to_matrix(rotation), T=translation
             )[..., :2]
             loss_lmk_68 = lmk_loss(pred_lmk_68, gt_lmks_68, self.image_size) * 1000
-            loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, self.image_size) * 2000
+            loss_lmk_oval = oval_lmk_loss(pred_lmk_68, gt_lmks_68, self.image_size) * 200
             loss_lmk_dense = lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 7000
             loss_lmk_mouth = mouth_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 10000
             loss_lmk_eye_closure = eye_closure_lmk_loss(pred_lmk_dense, gt_lmks_dense, self.image_size) * 1000
             loss_exp_norm = torch.sum(expression ** 2) * 0.02
-            loss_rotation_norm = torch.sum((rotation - ori_rotation) ** 2) * 100.0
-            all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm + loss_rotation_norm
-            # print(loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item(), loss_rotation_norm.item())
+            # loss_rotation_norm = torch.sum((rotation - ori_rotation) ** 2) * 100.0
+            all_loss = loss_lmk_68 + loss_lmk_oval + loss_lmk_dense + loss_lmk_mouth + loss_lmk_eye_closure + loss_exp_norm
+            # print(idx, loss_lmk_68.item(), loss_lmk_oval.item(), loss_lmk_dense.item())
             optimizer.zero_grad()
             all_loss.backward()
             optimizer.step()
@@ -129,7 +129,7 @@ class Lightning_Engine:
                     )
                     vis_i = torchvision.utils.draw_keypoints(vis_i, gt_lmks_68[idx:idx+1], colors="red", radius=1.5)
                     vis_i = torchvision.utils.draw_keypoints(vis_i, pred_lmk_68[idx:idx+1], colors="green", radius=1.5)
-                    # vis_i = torchvision.utils.draw_keypoints(vis_i, gt_lmks_dense[idx:idx+1], colors="blue", radius=1.5)
+                    vis_i = torchvision.utils.draw_keypoints(vis_i, gt_lmks_dense[idx:idx+1], colors="blue", radius=1.5)
                     # vis_image = torchvision.utils.make_grid([vis_i.cpu(), points_image[idx].cpu(), ], nrow=2)
                     vis_images.append(vis_i.float().cpu()/255.0)
                 visualization = torchvision.utils.make_grid(vis_images, nrow=4)

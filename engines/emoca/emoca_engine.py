@@ -31,7 +31,7 @@ class EMOCAEngine(nn.Module):
         #     face_alignment.LandmarksType.TWO_D, device=self.device
         # )
         self.dense_lmks_model = mediapipe.solutions.face_mesh.FaceMesh(
-            static_image_mode=False,
+            static_image_mode=True,
             max_num_faces=1, refine_landmarks=True,
             min_detection_confidence=0.5, min_tracking_confidence=0.5
         )

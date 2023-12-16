@@ -136,7 +136,7 @@ dependencies:
       - markdown-it-py==3.0.0
       - matplotlib==3.8.2
       - mdurl==0.1.2
-      - mediapipe==0.10.8
+      - mediapipe==0.10.7
       - ninja==1.11.1.1
       - onnx==1.15.0
       - onnxruntime==1.16.3
