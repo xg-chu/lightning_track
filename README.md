@@ -34,7 +34,7 @@ conda create -n track python=3.9
 conda install pytorch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 pytorch-cuda=11.8 -c pytorch -c nvidia
 conda install -c fvcore -c iopath -c conda-forge fvcore iopath
 conda install pytorch3d -c pytorch3d
-pip3 install mediapipe tqdm rich lmdb einops colored ninja av opencv-python scikit-image onnxruntime onnx transformers pykalman
+pip3 install mediapipe tqdm rich lmdb einops colored ninja av opencv-python scikit-image onnxruntime-gpu onnx transformers pykalman
 ```
 
 </details>
