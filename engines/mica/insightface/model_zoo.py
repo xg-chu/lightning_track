@@ -17,7 +17,7 @@ from .utils import face_align
 def get_model(model_file, ):
     assert os.path.exists(model_file), 'model_file %s should exist'%model_file
     router = ModelRouter(model_file)
-    providers = ['CPUExecutionProvider']
+    providers = ['CUDAExecutionProvider']
     provider_options = None
     model = router.get_model(providers=providers, provider_options=provider_options)
     return model
