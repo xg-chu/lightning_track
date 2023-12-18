@@ -42,7 +42,7 @@ class MICAEngine(torch.nn.Module):
         bbox = torch.tensor(
             [bbox[0]/frame.shape[1], bbox[1]/frame.shape[0], bbox[2]/frame.shape[1], bbox[3]/frame.shape[0]]
         )
-        return {'arcface_image': images, 'bbox': bbox, 'lmks': lmks,}
+        return {'arcface_image': images, 'bbox': bbox, 'kps': kps, 'lmks': lmks,}
 
     def process_frame(self, frame):
         if not hasattr(self, 'mica_model'):
@@ -61,6 +61,7 @@ class MICAEngine(torch.nn.Module):
         results = {
             'mica_shape': mica_shape,
             'bbox': insightface_res['bbox'],
+            'kps': insightface_res['kps'],
             'lmks': insightface_res['lmks'],
         }
         for key in results.keys():

@@ -100,6 +100,7 @@ class Lightning_Engine:
         for idx, name in enumerate(track_frames):
             lightning_results[name] = {
                 'bbox': batch_base['bbox'][idx].detach().float().cpu(),
+                'kps': batch_base['kps'][idx].detach().float().cpu(),
                 'mica_shape': shape_code[idx].detach().float().cpu(),
                 'emoca_expression': expression[idx].detach().float().cpu(),
                 'emoca_pose': batch_base['emoca_pose'][idx].detach().float().cpu(),

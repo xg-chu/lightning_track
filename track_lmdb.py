@@ -83,6 +83,7 @@ class Tracker:
                 pose_params=torch.tensor(data_result[frame]['emoca_pose'], device=self._device)[None].float()
             )
             vertices = vertices*self.verts_scale
+            gt_kps = torch.tensor(base_results[frame]['kps'])[None]
             gt_lmk_68 = torch.tensor(base_results[frame]['lmks'])[None]
             gt_lmk_dense = torch.tensor(base_results[frame]['lmks_dense'])[self.flame_model.mediapipe_idx.cpu()][None]
             images, alpha_images = mesh_render(
@@ -95,6 +96,7 @@ class Tracker:
             vis_image_1[alpha_images>0.5] *= 0.3
             vis_image_1[alpha_images>0.5] += (images[0, alpha_images>0.5] * 0.7)
             vis_image_1 = vis_image_1.cpu().to(torch.uint8)
+            vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_kps, colors="white", radius=3)
             vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_68, colors="red", radius=1.5)
             vis_image_1 = torchvision.utils.draw_keypoints(vis_image_1, gt_lmk_dense, colors="blue", radius=1.5)
             vis_image = torchvision.utils.make_grid([vis_image_0.cpu(), vis_image_1.cpu(), images[0].cpu()], nrow=3, padding=0)
