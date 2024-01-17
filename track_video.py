@@ -14,7 +14,7 @@ from utils.lmdb_utils import LMDBEngine
 from engines.core_engine import TrackEngine
 
 class Tracker:
-    def __init__(self, focal_length=8.0, device='cuda'):
+    def __init__(self, focal_length=12.0, device='cuda'):
         self._device = device
         self.tracker = TrackEngine(focal_length=focal_length, device=device)
 
@@ -224,7 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--synthesis', action='store_true')
     parser.add_argument('--no_vis', action='store_true')
     args = parser.parse_args()
-    tracker = Tracker(focal_length=8.0, device='cuda')
+    tracker = Tracker(focal_length=12.0, device='cuda')
     if not os.path.isdir(args.video_path):
         tracker.track_video(args.video_path, dir_path=args.outdir_path, synthesis=args.synthesis, no_vis=args.no_vis)
     else:

@@ -15,7 +15,7 @@ from utils.lmdb_utils import LMDBEngine
 from engines.core_engine import TrackEngine
 
 class Tracker:
-    def __init__(self, focal_length=8.0, device='cuda'):
+    def __init__(self, focal_length=12.0, device='cuda'):
         self._device = device
         self.tracker = TrackEngine(focal_length=focal_length, device=device)
 
@@ -125,6 +125,6 @@ if __name__ == '__main__':
     parser.add_argument('--lmdb_path', '-l', required=True, type=str)
     parser.add_argument('--outdir_path', '-d', default='', type=str)
     args = parser.parse_args()
-    tracker = Tracker(focal_length=8.0, device='cuda')
+    tracker = Tracker(focal_length=10.0, device='cuda')
     tracker.track_lmdb(args.lmdb_path, dir_path=args.outdir_path, )
    

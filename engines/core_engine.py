@@ -16,7 +16,7 @@ from engines.synthesis_engine import Synthesis_Engine
 from engines.human_matting import StyleMatteEngine as HumanMattingEngine
 
 class TrackEngine:
-    def __init__(self, focal_length=8.0, device='cuda'):
+    def __init__(self, focal_length=12.0, device='cuda'):
         random.seed(42)
         self._device = device
         # paths and data engine
