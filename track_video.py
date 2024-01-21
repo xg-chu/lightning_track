@@ -197,6 +197,8 @@ def run_smoothing(lightning_result, output_path):
         affine_matrix = np.concatenate([rotation, translates[fidx][:, None]], axis=-1)
         smoothed_results[frame_name]['transform_matrix'] = affine_matrix
         smoothed_results[frame_name]['mica_shape'] = shapecode
+    with open(os.path.join(output_path, 'smoothed.pkl'), 'wb') as f:
+        pickle.dump(smoothed_results, f)
     return smoothed_results
 
 
