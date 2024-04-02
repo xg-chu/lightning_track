@@ -59,7 +59,7 @@ class TrackEngine:
         else:
             video_reader = torchvision.io.VideoReader(src=video_path)
             meta_data = video_reader.get_metadata()['video']
-            return meta_data['video_fps']
+            return meta_data['fps'][0]
 
     def track_base(self, image_tensor, ):
         # EMOCA
