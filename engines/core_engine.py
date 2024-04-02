@@ -34,9 +34,9 @@ class TrackEngine:
 
     def build_video(self, video_path, output_path, matting=True, background=0.0):
         video_name = os.path.basename(video_path).split('.')[0]
-        shutil.rmtree(output_path) 
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
+        if os.path.exists(output_path):
+            shutil.rmtree(output_path) 
+        os.makedirs(output_path)
         if not os.path.exists(os.path.join(output_path, 'img_lmdb')):
             lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=True)
             frames_data, _, meta_data = torchvision.io.read_video(video_path, output_format='TCHW')
