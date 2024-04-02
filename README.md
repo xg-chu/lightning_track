@@ -48,6 +48,15 @@ conda env create -f environment.yml
 
 </details>
 
+<details>
+
+<summary><span>Run with Dockerfile</span></summary>
+
+```
+If your environment has unknown or unsolvable issues, use the Dockerfile as a final solution.
+```
+
+</details>
 
 ### Build source
 Check the ```build_resources.sh```.
