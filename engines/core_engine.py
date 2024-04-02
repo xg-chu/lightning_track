@@ -5,6 +5,7 @@ import os
 import sys
 import torch
 import random
+import shutil
 import torchvision
 from tqdm.rich import tqdm
 
@@ -33,17 +34,18 @@ class TrackEngine:
 
     def build_video(self, video_path, output_path, matting=True, background=0.0):
         video_name = os.path.basename(video_path).split('.')[0]
+        shutil.rmtree(output_path) 
         if not os.path.exists(output_path):
             os.makedirs(output_path)
         if not os.path.exists(os.path.join(output_path, 'img_lmdb')):
             lmdb_engine = LMDBEngine(os.path.join(output_path, 'img_lmdb'), write=True)
-            video_reader = torchvision.io.VideoReader(src=video_path)
-            meta_data = video_reader.get_metadata()['video']
-            for fidx, frame_data in tqdm(enumerate(iter(video_reader)), total=int(meta_data['fps'][0]*meta_data['duration'][0]), ncols=80, colour='#95bb72'):
-                if meta_data['fps'][0] > 50:
+            frames_data, _, meta_data = torchvision.io.read_video(video_path, output_format='TCHW')
+            assert frames_data.shape[0] > 0, 'No frames in the video, reading video failed.'
+            print(f'Processing video {video_path} with {frames_data.shape[0]} frames.')
+            for fidx, frame in tqdm(enumerate(frames_data), total=frames_data.shape[0]):
+                if meta_data['video_fps'] > 50:
                     if fidx % 2 == 0:
                         continue
-                frame, pts = frame_data['data'], frame_data['pts']
                 frame = torchvision.transforms.functional.resize(frame, 512, antialias=True) 
                 frame = torchvision.transforms.functional.center_crop(frame, 512)
                 if matting:
@@ -53,11 +55,11 @@ class TrackEngine:
                 lmdb_engine.dump(f'{video_name}_{fidx}', payload=frame, type='image')
             lmdb_engine.random_visualize(os.path.join(output_path, 'img_lmdb', 'visualize.jpg'))
             lmdb_engine.close()
-            return meta_data['fps'][0]
+            return meta_data['video_fps']
         else:
             video_reader = torchvision.io.VideoReader(src=video_path)
             meta_data = video_reader.get_metadata()['video']
-            return meta_data['fps'][0]
+            return meta_data['video_fps']
 
     def track_base(self, image_tensor, ):
         # EMOCA
