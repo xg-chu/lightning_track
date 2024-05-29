@@ -106,7 +106,7 @@ class TrackEngine:
         self.synthesis_engine.init_model(self.calibration_results)
         lightning_result = {k: v for k, v in lightning_result.items() if v is not None}
         # texture
-        tex_frames = random.sample(list(lmdb_engine.keys()), 16)
+        tex_frames = random.sample(list(lightning_result.keys()), 16)
         tex_batch = [lightning_result[key] for key in tex_frames]
         tex_batch = torch.utils.data.default_collate(tex_batch)
         tex_batch = {k: v.to(self._device) for k, v in tex_batch.items()}
